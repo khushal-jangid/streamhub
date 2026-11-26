@@ -52,7 +52,7 @@ if sys.platform == 'win32':
     except Exception:
         pass
 
-APP_VERSION = "2.4.0"
+APP_VERSION = "2.4.1"
 DEFAULT_UPDATE_URL = "khushal-jangid/streamhub"
 STREAMHUB_UPDATE_URL = os.environ.get("STREAMHUB_UPDATE_URL", "").strip()
 _ENV_DATA_DIR = os.environ.get("STREAMHUB_DATA_DIR", "").strip()
@@ -5044,6 +5044,11 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3z"/><path d="M20 14v7h-7"/></svg>
                 <span>Phone QR</span>
             </button>
+            <button class="btn-remote-nav" id="btnNavSettings" onclick="openUpdateModal()" title="Settings &amp; App Updates" aria-label="Settings and App Updates" style="position:relative;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                <span>Settings</span>
+                <span id="navSettingsDot" style="display:none;position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:#e50914;box-shadow:0 0 0 2px #0b0e17;"></span>
+            </button>
         </div>
     </div>
 
@@ -5382,7 +5387,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
             <button class="smart-pill" data-sf="recent" onclick="toggleSmartFilter('recent', this)">2025–2026 New</button>
             <button class="smart-pill" data-sf="imdb7" onclick="toggleSmartFilter('imdb7', this)">⭐ IMDb 7+</button>
             <button class="smart-pill" id="btnSmartClear" onclick="clearSmartFilters()" style="display:none;">✕ Clear</button>
-            <button class="smart-pill" id="btnAppVersionChip" onclick="openUpdateModal()" style="margin-left:auto;" title="App Version, Auto-Update &amp; Easy Setup">v2.4.0 • Updates</button>
+            <button class="smart-pill" id="btnAppVersionChip" onclick="openUpdateModal()" style="margin-left:auto;" title="Settings &amp; App Updates">v2.4.1 • Settings &amp; Updates</button>
         </div>
         <div class="search-grid" id="searchGrid"></div>
         <div class="load-more-wrap">
@@ -5548,23 +5553,20 @@ html, body { max-width: 100%; overflow-x: hidden; }
     <div class="modal-dialog" style="max-width:520px;width:96%;text-align:left;padding:18px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
             <div>
-                <h2 id="updateModalTitle" style="font-size:1.05rem;font-weight:800;color:#fff;">StreamHub App Updates &amp; Setup</h2>
+                <h2 id="updateModalTitle" style="font-size:1.05rem;font-weight:800;color:#fff;">⚙️ StreamHub Settings &amp; Updates</h2>
                 <div id="updateMetaLine" style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">Version loading...</div>
             </div>
-            <button class="btn-close-card" onclick="closeUpdateModal()" aria-label="Close update modal">
+            <button class="btn-close-card" onclick="closeUpdateModal()" aria-label="Close settings modal">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
         </div>
 
         <div style="background:#070910;border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:12px;">
-            <label for="updateFeedInput" style="display:block;font-size:0.78rem;font-weight:700;color:#bae6fd;margin-bottom:6px;">
-                Update Source URL ya GitHub Repo (owner/repo):
-            </label>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                <input type="text" id="updateFeedInput" class="input-control" style="flex:1 1 220px;min-width:0;background:#0b0e17;border:1px solid var(--border-strong);color:#fff;border-radius:9px;padding:8px 10px;font-size:0.82rem;outline:none;" placeholder="e.g. yourname/streamhub OR https://.../version.json">
-                <button type="button" id="btnCheckNow" class="btn-sm btn-indigo-sm" onclick="saveUpdateFeedAndCheck()">Save &amp; Check</button>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                <span style="font-size:0.82rem;font-weight:800;color:#fff;">App Updates</span>
+                <button type="button" id="btnCheckUpdateBig" class="btn-sm btn-indigo-sm" onclick="checkAppUpdate(true, true)">🔄 Check for Updates</button>
             </div>
-            <div id="updateStatusBox" style="font-size:0.78rem;color:var(--text-muted);margin-top:9px;line-height:1.45;"></div>
+            <div id="updateStatusBox" style="font-size:0.8rem;color:var(--text-muted);line-height:1.45;">Checking for updates...</div>
             <div id="updateDownloadBox" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08);">
                 <div id="updateNotesText" style="font-size:0.76rem;color:#cbd5e1;margin-bottom:8px;white-space:pre-line;"></div>
                 <div id="updateProgWrap" style="display:none;background:#1e293b;border-radius:999px;height:8px;overflow:hidden;margin-bottom:8px;">
@@ -5578,6 +5580,20 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 <button type="button" id="btnApkUpdate" class="btn-sm btn-vlc-sm" onclick="applyAndroidApkUpdateNow()" style="display:none;width:100%;min-height:40px;font-size:0.85rem;">📱 Download &amp; Install APK</button>
                 <a id="linkApkExternal" href="#" target="_blank" rel="noopener" onclick="if(window.StreamHubAndroid&&window.StreamHubAndroid.openExternalUrl){window.StreamHubAndroid.openExternalUrl(this.href);return false;}" style="display:none;margin-top:8px;text-align:center;font-size:0.76rem;color:#93c5fd;text-decoration:underline;">Ya Browser se APK Download Karein</a>
             </div>
+        </div>
+
+        <div style="background:#070910;border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:12px;">
+            <div style="font-size:0.8rem;font-weight:800;color:#bae6fd;margin-bottom:8px;">Movies Feed &amp; Cache</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 160px;" onclick="clearCacheAndRefresh()">↻ Refresh Latest Movies</button>
+            </div>
+            <details style="margin-top:10px;">
+                <summary style="cursor:pointer;font-size:0.74rem;color:var(--text-muted);font-weight:600;">Advanced: Update Source (GitHub / URL)</summary>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+                    <input type="text" id="updateFeedInput" class="input-control" style="flex:1 1 200px;min-width:0;background:#0b0e17;border:1px solid var(--border-strong);color:#fff;border-radius:9px;padding:8px 10px;font-size:0.82rem;outline:none;" placeholder="e.g. khushal-jangid/streamhub">
+                    <button type="button" id="btnCheckNow" class="btn-sm btn-indigo-sm" onclick="saveUpdateFeedAndCheck()">Save &amp; Check</button>
+                </div>
+            </details>
         </div>
 
         <div id="pcSetupToolsCard" style="background:#070910;border:1px solid var(--border);border-radius:12px;padding:12px;">
@@ -5612,9 +5628,10 @@ html, body { max-width: 100%; overflow-x: hidden; }
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3"/><circle cx="12" cy="9" r="2"/><line x1="10" y1="15" x2="14" y2="15"/></svg>
             <span id="dockLblRemote">Remote</span>
         </button>
-        <button class="dock-btn" id="dockBtnQr" onclick="isAndroidApp() ? jumpCategory('web-series') : openQrModal()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3z"/><path d="M20 14v7h-7"/></svg>
+        <button class="dock-btn" id="dockBtnQr" onclick="isAndroidApp() ? openUpdateModal() : openQrModal()" style="position:relative;">
+            <svg id="dockIconQr" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3z"/><path d="M20 14v7h-7"/></svg>
             <span id="dockLblQr">QR</span>
+            <span id="dockSettingsDot" style="display:none;position:absolute;top:4px;right:14px;width:7px;height:7px;border-radius:50%;background:#e50914;"></span>
         </button>
     </div>
 </nav>
@@ -5792,6 +5809,18 @@ html, body { max-width: 100%; overflow-x: hidden; }
         try {
             const nxt = JSON.parse(decodeURIComponent(encodedPayloadJson || ''));
             if (!nxt || typeof nxt !== 'object') return;
+            if (typeof nxt.zip_index === 'number' && activeZipEntries.length && nxt.zip_index >= 0 && nxt.zip_index < activeZipEntries.length) {
+                activeZipIndex = nxt.zip_index;
+                renderZipEpisodesList(true);
+            } else if (typeof nxt.ep_idx === 'number' && typeof nxt.season_idx === 'number' && activeSeriesData && activeSeriesData.seasons) {
+                activeSeriesSeasonIdx = nxt.season_idx;
+                activeSeriesEpIdx = nxt.ep_idx;
+                renderSeriesEpisodes();
+            }
+            if (!nxt.next_episode) {
+                const chainNxt = getNextEpisodePayload();
+                if (chainNxt) nxt.next_episode = chainNxt;
+            }
             await launchAndroidPlayerWithPayload(nxt, false);
         } catch (e) {}
     };
@@ -6088,7 +6117,11 @@ html, body { max-width: 100%; overflow-x: hidden; }
             const lr = document.getElementById('dockLblRemote');
             if (lr) lr.textContent = 'Movies';
             const lq = document.getElementById('dockLblQr');
-            if (lq) lq.textContent = 'Series';
+            if (lq) lq.textContent = 'Settings';
+            const iq = document.getElementById('dockIconQr');
+            if (iq) {
+                iq.innerHTML = '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>';
+            }
         } else if (isMobileDevice()) {
             togglePhoneQr(false);
             const chipTxt = document.getElementById('deviceModeText');
@@ -7041,13 +7074,14 @@ html, body { max-width: 100%; overflow-x: hidden; }
     }
 
     function buildNextZipPayload(idx, depth) {
-        if (!activeZipEntries.length || idx < 0 || idx >= activeZipEntries.length || depth > 5) return null;
+        if (!activeZipEntries.length || idx < 0 || idx >= activeZipEntries.length || depth > 15) return null;
         const ep = activeZipEntries[idx];
         const pKey = (currentMovieMeta && currentMovieMeta.permalink) || '';
         const mKey = pKey ? `${pKey}::zip::${ep.name}` : (ep.sid || ep.name);
         const trk = document.getElementById('audioTrackSelect') ? (parseInt(document.getElementById('audioTrackSelect').value || '1', 10) || 1) : 1;
         const subEl = document.getElementById('subTrackSelect');
         return {
+            zip_index: idx,
             stream_url: ep.stream_url,
             seek_url: ep.seek_url || '',
             base_offset: ep.base_offset || 0,
@@ -7064,27 +7098,35 @@ html, body { max-width: 100%; overflow-x: hidden; }
         };
     }
 
+    function buildNextSeriesPayload(sIdx, epIdx, depth) {
+        if (!activeSeriesData || !activeSeriesData.seasons || depth > 15) return null;
+        const season = activeSeriesData.seasons[sIdx];
+        if (!season || !season.episodes || epIdx < 0 || epIdx >= season.episodes.length) return null;
+        const nxt = season.episodes[epIdx];
+        const pKey = (currentMovieMeta && currentMovieMeta.permalink) || '';
+        const trk = document.getElementById('audioTrackSelect') ? (parseInt(document.getElementById('audioTrackSelect').value || '1', 10) || 1) : 1;
+        const subEl = document.getElementById('subTrackSelect');
+        const epLbl = nxt.ep_label || `Ep ${epIdx + 1}`;
+        return {
+            season_idx: sIdx,
+            ep_idx: epIdx,
+            hdhub_link: nxt.link,
+            title: `${cleanDisplayTitle(activeSeriesData.title || activeTitle)} • ${epLbl}`,
+            ep_label: epLbl,
+            audio_track: trk,
+            sub_track: subEl ? subEl.value : 'auto',
+            media_key: pKey ? `${pKey}::ep::${epLbl}` : nxt.link,
+            parent_key: pKey,
+            next_episode: buildNextSeriesPayload(sIdx, epIdx + 1, depth + 1),
+        };
+    }
+
     function getNextEpisodePayload() {
         if (activeZipEntries.length && activeZipIndex >= 0 && activeZipIndex + 1 < activeZipEntries.length) {
             return buildNextZipPayload(activeZipIndex + 1, 0);
         }
         if (activeSeriesData && activeSeriesData.seasons && activeSeriesEpIdx >= 0) {
-            const season = activeSeriesData.seasons[activeSeriesSeasonIdx];
-            if (season && season.episodes && activeSeriesEpIdx + 1 < season.episodes.length) {
-                const nxt = season.episodes[activeSeriesEpIdx + 1];
-                const pKey = (currentMovieMeta && currentMovieMeta.permalink) || '';
-                const trk = document.getElementById('audioTrackSelect') ? (parseInt(document.getElementById('audioTrackSelect').value || '1', 10) || 1) : 1;
-                const subEl = document.getElementById('subTrackSelect');
-                return {
-                    hdhub_link: nxt.link,
-                    title: `${cleanDisplayTitle(activeSeriesData.title || activeTitle)} • ${nxt.ep_label}`,
-                    ep_label: nxt.ep_label || `Ep ${activeSeriesEpIdx + 2}`,
-                    audio_track: trk,
-                    sub_track: subEl ? subEl.value : 'auto',
-                    media_key: pKey ? `${pKey}::ep::${nxt.ep_label || (activeSeriesEpIdx + 1)}` : nxt.link,
-                    parent_key: pKey,
-                };
-            }
+            return buildNextSeriesPayload(activeSeriesSeasonIdx, activeSeriesEpIdx + 1, 0);
         }
         return null;
     }
@@ -8027,36 +8069,50 @@ html, body { max-width: 100%; overflow-x: hidden; }
         }
     }
 
+    async function clearCacheAndRefresh() {
+        try { localStorage.removeItem('sh_home_cache_v2'); } catch (e) {}
+        closeUpdateModal();
+        showToast('Refreshing latest movies from HDHub4u...');
+        await loadHomeHub(true);
+    }
+
     async function checkAppUpdate(manual, inModal, silentBg) {
         const chip = document.getElementById('btnAppVersionChip');
         const navPill = document.getElementById('btnNavUpdatePill');
+        const navDot = document.getElementById('navSettingsDot');
+        const dockDot = document.getElementById('dockSettingsDot');
         const modeTxt = document.getElementById('deviceModeText');
         const box = document.getElementById('updateStatusBox');
-        if (inModal && box) box.textContent = 'Checking for updates...';
+        const chkBtn = document.getElementById('btnCheckUpdateBig');
+        if (inModal && box) box.textContent = 'Checking GitHub for updates...';
+        if (inModal && chkBtn) { chkBtn.disabled = true; chkBtn.textContent = 'Checking...'; }
         try {
             const resp = await fetch(manual ? '/api/check_update' : '/api/app_info');
             const data = await resp.json();
             if (data && data.version) {
+                const hasUpd = !!data.update_available;
+                if (navDot) navDot.style.display = hasUpd ? 'block' : 'none';
+                if (dockDot) dockDot.style.display = hasUpd ? 'block' : 'none';
                 if (chip) {
-                    if (data.update_available) {
+                    if (hasUpd) {
                         chip.textContent = `⬆ Update v${data.latest_version}`;
                         chip.classList.add('active');
                     } else {
                         chip.textContent = isAndroidApp()
-                            ? `v${data.version} • Updates`
+                            ? `v${data.version} • Settings & Updates`
                             : `v${data.version} • ${data.libvlc_ready ? 'libVLC Ready' : 'Web Mode'}`;
                         chip.classList.remove('active');
                     }
                 }
                 if (navPill) {
-                    if (data.update_available) {
+                    if (hasUpd) {
                         navPill.textContent = `⬆ v${data.latest_version}`;
                         navPill.style.display = 'inline-flex';
                     } else {
                         navPill.style.display = 'none';
                     }
                 }
-                if (data.update_available && isAndroidApp() && modeTxt) {
+                if (hasUpd && isAndroidApp() && modeTxt) {
                     modeTxt.textContent = `⬆ Update v${data.latest_version}`;
                 }
             }
@@ -8064,14 +8120,16 @@ html, body { max-width: 100%; overflow-x: hidden; }
             else if (silentBg) {
                 if (data && data.update_available) {
                     pendingUpdateInfo = data;
-                    showToast(`⬆ New StreamHub v${data.latest_version} available! Tap here to update`, 'ok', () => openUpdateModal());
+                    showToast(`⬆ New StreamHub v${data.latest_version} available! Settings me jakar update karein`, 'ok', () => openUpdateModal());
                 }
             } else if (manual) {
-                showToast(data.message || `StreamHub v${data.version || '2.4.0'} active`);
+                showToast(data.message || `StreamHub v${data.version || '2.4.1'} active`);
             }
         } catch (e) {
             if (inModal && box) box.textContent = 'Update check error';
             else if (manual && !silentBg) showToast('Update check failed', 'err');
+        } finally {
+            if (inModal && chkBtn) { chkBtn.disabled = false; chkBtn.textContent = '🔄 Check for Updates'; }
         }
     }
 
@@ -9458,6 +9516,72 @@ def _ensure_embedded_vlc_extracted(show_splash=True):
                 pass
     return _find_libvlc_dir()
 
+_EPISODE_CACHE_LOCK = threading.Lock()
+_EPISODE_RESOLVE_CACHE = OrderedDict()  # {link: (ts, resolved_dict)}
+_EPISODE_PREWARM_EVENTS = {}            # {link: threading.Event}
+
+def _resolve_episode_cached(hdhub_link):
+    lnk = str(hdhub_link or '').strip()
+    if not lnk:
+        return None
+    wait_ev = None
+    with _EPISODE_CACHE_LOCK:
+        hit = _EPISODE_RESOLVE_CACHE.get(lnk)
+        if hit and (time.time() - hit[0]) < 1800:
+            _EPISODE_RESOLVE_CACHE.move_to_end(lnk)
+            return hit[1]
+        wait_ev = _EPISODE_PREWARM_EVENTS.get(lnk)
+    if wait_ev is not None:
+        wait_ev.wait(timeout=25)
+        with _EPISODE_CACHE_LOCK:
+            hit = _EPISODE_RESOLVE_CACHE.get(lnk)
+            if hit and (time.time() - hit[0]) < 1800:
+                _EPISODE_RESOLVE_CACHE.move_to_end(lnk)
+                return hit[1]
+    res = resolve_hubcloud(lnk)
+    if res and res.get('success') and res.get('stream_url'):
+        with _EPISODE_CACHE_LOCK:
+            _EPISODE_RESOLVE_CACHE[lnk] = (time.time(), res)
+            while len(_EPISODE_RESOLVE_CACHE) > 80:
+                _EPISODE_RESOLVE_CACHE.popitem(last=False)
+    return res
+
+def _prewarm_episode_async(hdhub_link):
+    lnk = str(hdhub_link or '').strip()
+    if not lnk:
+        return
+    now = time.time()
+    with _EPISODE_CACHE_LOCK:
+        hit = _EPISODE_RESOLVE_CACHE.get(lnk)
+        if hit and (now - hit[0]) < 1800:
+            return
+        if lnk in _EPISODE_PREWARM_EVENTS:
+            return
+        ev = threading.Event()
+        _EPISODE_PREWARM_EVENTS[lnk] = ev
+
+    def _bg():
+        try:
+            res = resolve_hubcloud(lnk)
+            if res and res.get('success') and res.get('stream_url'):
+                with _EPISODE_CACHE_LOCK:
+                    _EPISODE_RESOLVE_CACHE[lnk] = (time.time(), res)
+                    while len(_EPISODE_RESOLVE_CACHE) > 80:
+                        _EPISODE_RESOLVE_CACHE.popitem(last=False)
+                cm_r = int(res.get('compress_method', 0) or 0)
+                if cm_r == 0:
+                    get_stream_session(res['stream_url'], res.get('seek_url', ''), int(res.get('base_offset', 0) or 0), res.get('sub_size', None), cm_r).warm_async()
+                elif cm_r == -1 and res.get('sid'):
+                    get_hls_session(res['stream_url'], sid=res['sid']).warm_async()
+        except Exception:
+            pass
+        finally:
+            with _EPISODE_CACHE_LOCK:
+                _EPISODE_PREWARM_EVENTS.pop(lnk, None)
+            ev.set()
+
+    threading.Thread(target=_bg, daemon=True).start()
+
 def _prepare_play_target(body, srv_port=None):
     stream_url = body.get('stream_url', '')
     seek_url = body.get('seek_url', '')
@@ -9479,6 +9603,22 @@ def _prepare_play_target(body, srv_port=None):
                 cm = int(sinfo.get('compress_method', 0) or 0)
             if not backups:
                 backups = sinfo.get('backup_urls') or []
+
+    if not stream_url and body.get('hdhub_link'):
+        resolved = _resolve_episode_cached(body.get('hdhub_link'))
+        if not resolved or not resolved.get('success') or not resolved.get('stream_url'):
+            err_msg = (resolved or {}).get('error') or 'Next episode ka stream link resolve nahi hua'
+            return None, {"success": False, "message": err_msg}
+        stream_url = resolved.get('stream_url', '')
+        seek_url = resolved.get('seek_url', '') or ''
+        base_off = int(resolved.get('base_offset', 0) or 0)
+        sub_sz = resolved.get('sub_size', None)
+        cm = int(resolved.get('compress_method', 0) or 0)
+        sid_val = str(resolved.get('sid', '') or '')
+        if sid_val and not backups:
+            sinfo2 = get_short_stream(sid_val)
+            if sinfo2:
+                backups = sinfo2.get('backup_urls') or []
 
     if not stream_url:
         return None, {"success": False, "message": "Stream URL missing"}
@@ -9526,6 +9666,19 @@ def _prepare_play_target(body, srv_port=None):
 
     can_seek = True if is_hls else (cm != 8 and bool(seek_url or is_range_capable(stream_url) or any(is_range_capable(u) for u in (backups or []))))
 
+    next_ep_obj = body.get('next_episode') if isinstance(body.get('next_episode'), dict) else None
+    if next_ep_obj:
+        if next_ep_obj.get('hdhub_link'):
+            _prewarm_episode_async(next_ep_obj['hdhub_link'])
+        elif next_ep_obj.get('stream_url') and int(next_ep_obj.get('compress_method', 0) or 0) == 0:
+            get_stream_session(
+                next_ep_obj['stream_url'],
+                next_ep_obj.get('seek_url', ''),
+                int(next_ep_obj.get('base_offset', 0) or 0),
+                next_ep_obj.get('sub_size', None),
+                0
+            ).warm_async()
+
     return {
         "target": final_target,
         "is_hls": is_hls,
@@ -9544,7 +9697,7 @@ def _prepare_play_target(body, srv_port=None):
         "parent_key": str(body.get('parent_key', '') or ''),
         "ep_label": str(body.get('ep_label', '') or ''),
         "subtitle_file": sub_file,
-        "next_episode": body.get('next_episode') if isinstance(body.get('next_episode'), dict) else None,
+        "next_episode": next_ep_obj,
     }, None
 
 def _stop_previous_players():

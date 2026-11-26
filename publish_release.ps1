@@ -1,6 +1,7 @@
 ﻿param(
     [string]$Version = "",
-    [string]$Notes = ""
+    [string]$Notes = "",
+    [int]$MinApkVersionCode = 0
 )
 
 $ErrorActionPreference = "Stop"
@@ -97,7 +98,7 @@ $manifest = [ordered]@{
     apk_size_bytes = $apkSize
     py_download_url = "https://github.com/$Repo/releases/download/$Tag/streamhub_app.py"
     py_sha256 = $pySha
-    min_apk_version_code = $apkVersionCode
+    min_apk_version_code = if ($MinApkVersionCode -gt 0) { $MinApkVersionCode } else { $apkVersionCode }
     notes = $Notes
 }
 $jsonOut = $manifest | ConvertTo-Json -Depth 4
