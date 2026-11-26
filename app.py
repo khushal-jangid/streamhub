@@ -40,14 +40,19 @@ try:
 except Exception:
     pass
 
-# Built-in DoH (Cloudflare 1.1.1.1 / Google 8.8.8.8) bypasses ISP 4G SIM DNS blocks & carrier IPv6 stalls
+# Fast OS-First DNS + Happy Eyeballs (RFC 8305) + DoH Bypass Fallback (bypasses dead carrier IPv4s & ISP SIM DNS blocks)
 _ORIG_GETADDRINFO = socket.getaddrinfo
+_ORIG_CREATE_CONNECTION = socket.create_connection
+_NET_CACHE_LOCK = threading.Lock()
+_GOOD_IP_CACHE = {}    # {(host_lower, port): (mono_ts, ip_str)}
+_BAD_IP_UNTIL = {}     # {(ip_str, port): mono_deadline}
 _DOH_LOCK = threading.Lock()
-_DOH_CACHE = {}  # {host_lower: (ts, [ipv4, ...])}
-_DOH_INFLIGHT = set()
+_DOH_CACHE = {}        # {host_lower: (mono_ts, [ip_str, ...])}
+_DOH_EVENTS = {}       # {host_lower: threading.Event}
 _DOH_PRIORITY_DOMAINS = (
     'hdhub4u', '4khdhub', 'hblinks', 'hubcloud', 'hubdrive', 'hubcdn',
-    'pingora.fyi', 'gamerxyt', 'hdstream4u', 'gadgetsweb', 'cryptonewz', 'fsl'
+    'pingora.fyi', 'gamerxyt', 'hdstream4u', 'gadgetsweb', 'cryptonewz', 'fsl',
+    'greenmotors'
 )
 
 def _is_ip_literal(h):
@@ -76,92 +81,312 @@ def _is_public_ipv4(ip):
         return False
     return True
 
-def _doh_lookup_ipv4(host):
+def _is_public_ip(ip):
+    if not ip:
+        return False
+    if ':' in ip:
+        il = ip.lower()
+        return il != '::1' and not il.startswith(('fe80:', 'fc', 'fd', '::ffff:127.', '::ffff:10.'))
+    return _is_public_ipv4(ip)
+
+def _doh_lookup_ips(host, wait_timeout=2.5):
     hl = str(host or '').strip().lower()
     if not hl:
         return []
-    now = time.time()
+    now = time.monotonic()
+    ev_wait = None
+    ev_mine = None
     with _DOH_LOCK:
         hit = _DOH_CACHE.get(hl)
         if hit:
-            ttl = 300 if hit[1] else 8
+            ttl = 300.0 if hit[1] else 10.0
             if (now - hit[0]) < ttl:
                 return list(hit[1])
-        if hl in _DOH_INFLIGHT:
-            return []
-        _DOH_INFLIGHT.add(hl)
+        ev_wait = _DOH_EVENTS.get(hl)
+        if ev_wait is None:
+            ev_mine = threading.Event()
+            _DOH_EVENTS[hl] = ev_mine
+    if ev_wait is not None:
+        ev_wait.wait(timeout=wait_timeout)
+        with _DOH_LOCK:
+            hit2 = _DOH_CACHE.get(hl)
+            return list(hit2[1]) if hit2 else []
+
     ips = []
     try:
-        endpoints = [
-            (f"https://1.1.1.1/dns-query?name={urllib.parse.quote(hl)}&type=A", {'Accept': 'application/dns-json', 'User-Agent': 'StreamHub/1.0'}),
-            (f"https://1.0.0.1/dns-query?name={urllib.parse.quote(hl)}&type=A", {'Accept': 'application/dns-json', 'User-Agent': 'StreamHub/1.0'}),
-            (f"https://8.8.8.8/resolve?name={urllib.parse.quote(hl)}&type=A", {'User-Agent': 'StreamHub/1.0'}),
-        ]
-        for u, hdrs in endpoints:
-            try:
-                req = urllib.request.Request(u, headers=hdrs)
-                with urllib.request.urlopen(req, timeout=3.0) as resp:
-                    data = json.loads(resp.read().decode('utf-8', 'ignore'))
-                for ans in (data.get('Answer') or []):
-                    if ans.get('type') == 1:
-                        ip = str(ans.get('data') or '').strip()
-                        if _is_public_ipv4(ip) and ip not in ips:
-                            ips.append(ip)
-                if ips:
-                    break
-            except Exception:
-                continue
+        def _query_one(qtype):
+            endpoints = [
+                (f"https://1.1.1.1/dns-query?name={urllib.parse.quote(hl)}&type={qtype}", {'Accept': 'application/dns-json', 'User-Agent': 'StreamHub/1.0'}),
+                (f"https://1.0.0.1/dns-query?name={urllib.parse.quote(hl)}&type={qtype}", {'Accept': 'application/dns-json', 'User-Agent': 'StreamHub/1.0'}),
+                (f"https://8.8.8.8/resolve?name={urllib.parse.quote(hl)}&type={qtype}", {'User-Agent': 'StreamHub/1.0'}),
+            ]
+            found = []
+            for u, hdrs in endpoints:
+                try:
+                    req = urllib.request.Request(u, headers=hdrs)
+                    with urllib.request.urlopen(req, timeout=2.5) as resp:
+                        data = json.loads(resp.read().decode('utf-8', 'ignore'))
+                    for ans in (data.get('Answer') or []):
+                        if ans.get('type') in (1, 28):
+                            ip = str(ans.get('data') or '').strip()
+                            if _is_public_ip(ip) and ip not in found:
+                                found.append(ip)
+                    if found:
+                        break
+                except Exception:
+                    continue
+            return found
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+            f_v4 = ex.submit(_query_one, 'A')
+            f_v6 = ex.submit(_query_one, 'AAAA')
+            for ip in (f_v4.result() + f_v6.result()):
+                if ip not in ips:
+                    ips.append(ip)
     finally:
         with _DOH_LOCK:
-            _DOH_INFLIGHT.discard(hl)
-            _DOH_CACHE[hl] = (time.time(), ips if ips else [])
+            _DOH_CACHE[hl] = (time.monotonic(), ips if ips else [])
+            if ev_mine is not None:
+                _DOH_EVENTS.pop(hl, None)
+                ev_mine.set()
     return ips
+
+def _build_addrinfo_for_ips(ips, port, family, socktype, proto, flags):
+    out = []
+    seen = set()
+    for ip in (ips or []):
+        af = socket.AF_INET6 if ':' in ip else socket.AF_INET
+        if family in (socket.AF_INET, socket.AF_INET6) and af != family:
+            continue
+        try:
+            for item in _ORIG_GETADDRINFO(ip, port, af, socktype, proto, flags):
+                key = (item[0], item[4][0], item[4][1])
+                if key not in seen:
+                    seen.add(key)
+                    out.append(item)
+        except Exception:
+            pass
+    return out
 
 def _smart_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
     if not isinstance(host, str) or not host or '.' not in host:
         return _ORIG_GETADDRINFO(host, port, family, type, proto, flags)
     hl = host.strip().lower()
-    if hl in ('localhost', '1.1.1.1', '8.8.8.8', '1.0.0.1', '8.8.4.4') or _is_ip_literal(hl):
+    if hl in ('localhost', '1.1.1.1', '8.8.8.8', '1.0.0.1', '8.8.4.4') or hl.endswith('.local') or _is_ip_literal(hl):
         return _ORIG_GETADDRINFO(host, port, family, type, proto, flags)
-    need_doh = any(d in hl for d in _DOH_PRIORITY_DOMAINS) and family in (0, socket.AF_INET)
-    if need_doh:
-        doh_ips = _doh_lookup_ipv4(hl)
-        if doh_ips:
-            out = []
-            for ip in doh_ips:
+
+    res = []
+    try:
+        res = list(_ORIG_GETADDRINFO(host, port, family, type, proto, flags))
+    except Exception:
+        res = []
+
+    has_public = any(_is_public_ip(r[4][0]) for r in res)
+    extra_ips = []
+    if not res or not has_public:
+        # OS DNS failed or returned private/bogon block IP -> query DoH (A + AAAA)
+        doh_ips = _doh_lookup_ips(hl)
+        extra_ips.extend(doh_ips)
+    elif any(d in hl for d in _DOH_PRIORITY_DOMAINS):
+        with _DOH_LOCK:
+            hit = _DOH_CACHE.get(hl)
+        if hit and (time.monotonic() - hit[0]) < 300.0:
+            extra_ips.extend(hit[1])
+
+    if extra_ips:
+        seen_k = {(r[0], r[4][0], r[4][1]) for r in res}
+        for item in _build_addrinfo_for_ips(extra_ips, port, family, type, proto, flags):
+            k = (item[0], item[4][0], item[4][1])
+            if k not in seen_k:
+                seen_k.add(k)
+                res.append(item)
+
+    if not res:
+        return _ORIG_GETADDRINFO(host, port, family, type, proto, flags)
+    return res
+
+def _interleave_ip_infos(infos, host_l, port_int):
+    now = time.monotonic()
+    with _NET_CACHE_LOCK:
+        good_ent = _GOOD_IP_CACHE.get((host_l, port_int))
+        good_ip = good_ent[1] if (good_ent and (now - good_ent[0]) < 180.0) else None
+        bad_set = {ip for (ip, p), exp in _BAD_IP_UNTIL.items() if p == port_int and exp > now}
+
+    dedup = []
+    seen = set()
+    for inf in infos:
+        ip = inf[4][0]
+        if ip not in seen:
+            seen.add(ip)
+            dedup.append(inf)
+
+    good_list = [i for i in dedup if good_ip and i[4][0] == good_ip and i[4][0] not in bad_set]
+    rem_ok = [i for i in dedup if i not in good_list and i[4][0] not in bad_set]
+    bad_list = [i for i in dedup if i[4][0] in bad_set]
+
+    v4 = [i for i in rem_ok if i[0] == socket.AF_INET]
+    v6 = [i for i in rem_ok if i[0] == socket.AF_INET6]
+    mixed = []
+    for a, b in zip(v4, v6):
+        mixed.extend([a, b])
+    mixed.extend(v4[len(v6):] + v6[len(v4):])
+    return good_list + mixed + bad_list, bool(good_list)
+
+def _race_connect_infos(infos, host_l, port_int, t_eff, is_default_to, source_address=None, cached_good_ip=None, stagger_sec=0.20):
+    """Races multiple candidate sockaddr tuples with RFC-8305 Happy Eyeballs stagger and updates IP health cache."""
+    cand_infos = infos[:6]
+    winner = [None, None]
+    last_err = [None]
+    cond = threading.Condition()
+    stop_evt = threading.Event()
+    active = [0]
+
+    def _try_one(inf, sock_to):
+        af, stype, proto, _, sa = inf
+        ip_str = sa[0]
+        sock = None
+        try:
+            sock = socket.socket(af, stype, proto)
+            sock.settimeout(sock_to)
+            if source_address:
+                sock.bind(source_address)
+            sock.connect(sa)
+            with cond:
+                if not stop_evt.is_set() and winner[0] is None:
+                    winner[0] = sock
+                    winner[1] = ip_str
+                    stop_evt.set()
+                    cond.notify_all()
+                    return
+            try:
+                sock.close()
+            except Exception:
+                pass
+        except Exception as e:
+            if sock is not None:
                 try:
-                    out.extend(_ORIG_GETADDRINFO(ip, port, socket.AF_INET, type, proto, flags))
+                    sock.close()
                 except Exception:
                     pass
-            if out:
-                return out
+            with _NET_CACHE_LOCK:
+                _BAD_IP_UNTIL[(ip_str, port_int)] = time.monotonic() + 180.0
+                g = _GOOD_IP_CACHE.get((host_l, port_int))
+                if g and g[1] == ip_str:
+                    _GOOD_IP_CACHE.pop((host_l, port_int), None)
+            with cond:
+                last_err[0] = e
+                cond.notify_all()
+        finally:
+            with cond:
+                active[0] -= 1
+                cond.notify_all()
+
+    deadline = time.monotonic() + max(2.0, t_eff)
+    for idx, inf in enumerate(cand_infos):
+        if stop_evt.is_set():
+            break
+        rem = deadline - time.monotonic()
+        if rem <= 0.05:
+            break
+        with cond:
+            active[0] += 1
+        threading.Thread(target=_try_one, args=(inf, max(1.5, min(t_eff, 6.0))), daemon=True).start()
+        if idx + 1 < len(cand_infos):
+            step = 0.45 if (idx == 0 and cached_good_ip and inf[4][0] == cached_good_ip) else stagger_sec
+            with cond:
+                cond.wait(timeout=min(step, max(0.05, deadline - time.monotonic())))
+                if winner[0] is not None:
+                    break
+
+    with cond:
+        while winner[0] is None and active[0] > 0:
+            rem = deadline - time.monotonic()
+            if rem <= 0:
+                break
+            cond.wait(timeout=rem)
+        stop_evt.set()
+        if winner[0] is not None:
+            win_sock, win_ip = winner[0], winner[1]
+            with _NET_CACHE_LOCK:
+                _GOOD_IP_CACHE[(host_l, port_int)] = (time.monotonic(), win_ip)
+                _BAD_IP_UNTIL.pop((win_ip, port_int), None)
+            win_sock.settimeout(None if is_default_to else t_eff)
+            return win_sock, None
+    return None, (last_err[0] or TimeoutError(f"timed out connecting to {host_l}:{port_int}"))
+
+def _fast_create_connection(address, timeout=socket._GLOBAL_DEFAULT_TIMEOUT, source_address=None):
+    host, port = address
+    is_default_to = (timeout is socket._GLOBAL_DEFAULT_TIMEOUT or timeout is None)
+    if not isinstance(host, str) or not host or '.' not in host:
+        return _ORIG_CREATE_CONNECTION(address, timeout=timeout, source_address=source_address)
+    hl = host.strip().lower()
+    if hl in ('localhost', '1.1.1.1', '8.8.8.8', '1.0.0.1', '8.8.4.4') or hl.endswith('.local') or _is_ip_literal(hl):
+        return _ORIG_CREATE_CONNECTION(address, timeout=timeout, source_address=source_address)
+
     try:
-        res = _ORIG_GETADDRINFO(host, port, family, type, proto, flags)
-        has_public_v4 = any(r[0] == socket.AF_INET and _is_public_ipv4(r[4][0]) for r in res)
-        if not res or (family in (0, socket.AF_INET) and not has_public_v4 and not hl.endswith('.local')):
-            doh_ips = _doh_lookup_ipv4(hl)
-            if doh_ips:
-                out = []
-                for ip in doh_ips:
-                    out.extend(_ORIG_GETADDRINFO(ip, port, socket.AF_INET, type, proto, flags))
-                if out:
-                    return out
-        # Prefer IPv4 first on dual-stack mobile SIM networks to prevent IPv6 connect stalls
-        if family == 0 and len(res) > 1:
-            res = sorted(res, key=lambda r: 0 if r[0] == socket.AF_INET else 1)
-        return res
+        port_int = int(port)
     except Exception:
-        if family in (0, socket.AF_INET):
-            doh_ips = _doh_lookup_ipv4(hl)
-            if doh_ips:
-                out = []
-                for ip in doh_ips:
-                    out.extend(_ORIG_GETADDRINFO(ip, port, socket.AF_INET, type, proto, flags))
-                if out:
-                    return out
-        raise
+        return _ORIG_CREATE_CONNECTION(address, timeout=timeout, source_address=source_address)
+
+    t_eff = 10.0 if is_default_to else float(timeout)
+    infos = _smart_getaddrinfo(host, port, 0, socket.SOCK_STREAM)
+    if not infos:
+        return _ORIG_CREATE_CONNECTION(address, timeout=timeout, source_address=source_address)
+
+    ordered, _ = _interleave_ip_infos(infos, hl, port_int)
+    if len(ordered) == 1 and source_address is None:
+        try:
+            sock = socket.socket(ordered[0][0], ordered[0][1], ordered[0][2])
+            if not is_default_to:
+                sock.settimeout(t_eff)
+            sock.connect(ordered[0][4])
+            with _NET_CACHE_LOCK:
+                _GOOD_IP_CACHE[(hl, port_int)] = (time.monotonic(), ordered[0][4][0])
+            return sock
+        except Exception as e:
+            with _NET_CACHE_LOCK:
+                _BAD_IP_UNTIL[(ordered[0][4][0], port_int)] = time.monotonic() + 180.0
+            try:
+                sock.close()
+            except Exception:
+                pass
+            if any(d in hl for d in _DOH_PRIORITY_DOMAINS):
+                doh_ips = [ip for ip in _doh_lookup_ips(hl) if ip != ordered[0][4][0]]
+                if doh_ips:
+                    ordered = _build_addrinfo_for_ips(doh_ips, port, 0, socket.SOCK_STREAM, 0, 0)
+                else:
+                    raise
+            else:
+                raise
+
+    with _NET_CACHE_LOCK:
+        cached_g = _GOOD_IP_CACHE.get((hl, port_int))
+        cached_good_ip = cached_g[1] if (cached_g and (time.monotonic() - cached_g[0]) < 180.0) else None
+
+    win_sock, err1 = _race_connect_infos(
+        ordered, hl, port_int, t_eff, is_default_to,
+        source_address=source_address, cached_good_ip=cached_good_ip, stagger_sec=0.20,
+    )
+    if win_sock is not None:
+        return win_sock
+
+    tried_ips = {i[4][0] for i in ordered[:6]}
+    doh_extra = [ip for ip in _doh_lookup_ips(hl) if ip not in tried_ips]
+    if doh_extra:
+        extra_infos = _build_addrinfo_for_ips(doh_extra, port, 0, socket.SOCK_STREAM, 0, 0)
+        if extra_infos:
+            win_sock2, err2 = _race_connect_infos(
+                extra_infos, hl, port_int, min(t_eff, 5.0), is_default_to,
+                source_address=source_address, stagger_sec=0.10,
+            )
+            if win_sock2 is not None:
+                return win_sock2
+            err1 = err2 or err1
+
+    raise (err1 or TimeoutError(f"timed out connecting to {host}:{port}"))
 
 socket.getaddrinfo = _smart_getaddrinfo
+socket.create_connection = _fast_create_connection
 
 try:
     import qrcode
@@ -176,7 +401,7 @@ if sys.platform == 'win32':
     except Exception:
         pass
 
-APP_VERSION = "2.6.2"
+APP_VERSION = "2.6.3"
 DEFAULT_UPDATE_URL = "khushal-jangid/streamhub"
 STREAMHUB_UPDATE_URL = os.environ.get("STREAMHUB_UPDATE_URL", "").strip()
 _ENV_DATA_DIR = os.environ.get("STREAMHUB_DATA_DIR", "").strip()
@@ -305,7 +530,9 @@ def fetch_html(url, referer=None, extra_headers=None, timeout=15):
         headers['Referer'] = referer
     if extra_headers:
         headers.update(extra_headers)
-    attempts = 2 if any(h in url.lower() for h in ('hubdrive.', 'hubcloud.', 'hblinks.', 'gamerxyt.')) else 1
+    pu_host = (urllib.parse.urlparse(url).hostname or '').lower()
+    is_pri = bool(pu_host and any(d in pu_host for d in _DOH_PRIORITY_DOMAINS))
+    attempts = 2 if (is_pri or any(h in url.lower() for h in ('hubdrive.', 'hubcloud.', 'hblinks.', 'gamerxyt.'))) else 1
     last_err = None
     for idx in range(attempts):
         try:
@@ -320,7 +547,15 @@ def fetch_html(url, referer=None, extra_headers=None, timeout=15):
                 return raw.decode('utf-8', errors='ignore'), final_url
         except Exception as e:
             last_err = e
-            if idx + 1 < attempts and ('timed out' in str(e).lower() or isinstance(e, (TimeoutError, socket.timeout))):
+            err_l = str(e).lower()
+            if idx + 1 < attempts and is_pri and ('ssl' in err_l or 'certificate' in err_l or 'reset' in err_l):
+                with _NET_CACHE_LOCK:
+                    bad_ent = _GOOD_IP_CACHE.pop((pu_host, 443), None)
+                    if bad_ent:
+                        _BAD_IP_UNTIL[(bad_ent[1], 443)] = time.monotonic() + 180.0
+                _doh_lookup_ips(pu_host)
+                continue
+            if idx + 1 < attempts and any(h in url.lower() for h in ('hubdrive.', 'hubcloud.', 'hblinks.', 'gamerxyt.')) and ('timed out' in err_l or isinstance(e, (TimeoutError, socket.timeout))):
                 time.sleep(0.3)
                 continue
             raise
@@ -358,11 +593,23 @@ def rot13(s):
             res.append(c)
     return ''.join(res)
 
+_GREENMOTORS_CACHE_LOCK = threading.Lock()
+_GREENMOTORS_CACHE = OrderedDict()  # {greenmotors_url: (ts, decoded_url)}
+
 def decode_greenmotors(greenmotors_url):
-    """De-obfuscates greenmotors.club / greenmotors.cc token to extract direct HubCloud drive link."""
+    """De-obfuscates greenmotors.club / greenmotors.cc token to extract direct HubCloud drive link (cached)."""
+    gm_u = str(greenmotors_url or '').strip()
+    if not gm_u:
+        return None
+    now = time.time()
+    with _GREENMOTORS_CACHE_LOCK:
+        hit = _GREENMOTORS_CACHE.get(gm_u)
+        if hit and (now - hit[0]) < 3600:
+            _GREENMOTORS_CACHE.move_to_end(gm_u)
+            return hit[1]
     try:
-        req = urllib.request.Request(greenmotors_url, headers={'User-Agent': USER_AGENT})
-        with urllib.request.urlopen(req, timeout=12) as r:
+        req = urllib.request.Request(gm_u, headers={'User-Agent': USER_AGENT})
+        with urllib.request.urlopen(req, timeout=10) as r:
             html = r.read().decode('utf-8', errors='ignore')
         # Pattern 1: standard s('o', '...') format
         m = re.search(r"s\('o',\s*['\"]([^'\"]+)['\"]", html)
@@ -381,9 +628,15 @@ def decode_greenmotors(greenmotors_url):
         d4 = base64.b64decode(d3).decode('utf-8', errors='ignore')
         data = json.loads(d4)
         hubcloud_url = base64.b64decode(data['o']).decode('utf-8', errors='ignore')
-        return normalize_url(hubcloud_url)
+        dec = normalize_url(hubcloud_url)
+        if dec:
+            with _GREENMOTORS_CACHE_LOCK:
+                _GREENMOTORS_CACHE[gm_u] = (time.time(), dec)
+                while len(_GREENMOTORS_CACHE) > 500:
+                    _GREENMOTORS_CACHE.popitem(last=False)
+        return dec
     except Exception as e:
-        print(f"[GreenMotors] Decode error on {greenmotors_url[:50]}:", e)
+        print(f"[GreenMotors] Decode error on {gm_u[:50]}:", e)
         return None
 
 def is_range_capable(url):
@@ -2106,7 +2359,7 @@ def _discover_live_hdhub4u_base(force=False):
                 continue
         return HDHUB4U_BASE_URL
 
-def _fetch_hdhub4u_html(post_url):
+def _fetch_hdhub4u_html(post_url, timeout=10):
     """Fetches an HDHub4u page/post using the verified live mirror domain first (never stalls on dead archived domains)."""
     global HDHUB4U_BASE_URL
     pu = urllib.parse.urlparse(post_url)
@@ -2114,7 +2367,7 @@ def _fetch_hdhub4u_html(post_url):
     target_url = f"{HDHUB4U_BASE_URL}{pu.path}" + (f"?{pu.query}" if pu.query else "") if is_hdhub else post_url
     is_listing = is_hdhub and (pu.path in ('', '/') or pu.path.startswith(('/page/', '/category/')))
     try:
-        html, final_url = fetch_html(target_url, timeout=10)
+        html, final_url = fetch_html(target_url, timeout=timeout)
         fu = urllib.parse.urlparse(final_url)
         if 'hdhub4u' in fu.netloc.lower():
             HDHUB4U_BASE_URL = f"{fu.scheme}://{fu.netloc}"
@@ -2128,20 +2381,25 @@ def _fetch_hdhub4u_html(post_url):
             live_base = _discover_live_hdhub4u_base(force=True)
             fallback = f"{live_base}{pu.path}" + (f"?{pu.query}" if pu.query else "")
             if fallback != target_url:
-                return fetch_html(fallback, timeout=10)
+                return fetch_html(fallback, timeout=timeout)
         raise
     except Exception:
         if is_hdhub:
             live_base = _discover_live_hdhub4u_base(force=True)
             fallback = f"{live_base}{pu.path}" + (f"?{pu.query}" if pu.query else "")
             if fallback != target_url:
-                return fetch_html(fallback, timeout=10)
+                return fetch_html(fallback, timeout=timeout)
             if post_url != target_url:
-                return fetch_html(post_url, timeout=10)
+                return fetch_html(post_url, timeout=timeout)
         raise
 
+_QUICK_PLAYABLE_RE = re.compile(
+    r'href=["\']https?://(?:greenmotors\.|hubcloud\.|hubdrive\.|hubcdn\.|hblinks\.|hdstream4u\.|4khdhub\.|gamerxyt\.)[^"\']+["\']',
+    re.I
+)
+
 def _check_post_has_links(item):
-    """Verifies a catalog/search item resolves to an active page with playable links (cached)."""
+    """Fast check whether a catalog/search item resolves to an active page with playable links (without blocking on greenmotors decoding)."""
     url = (item or {}).get('permalink', '')
     if not url:
         return False
@@ -2153,17 +2411,37 @@ def _check_post_has_links(item):
         ttl = 3600 if valid else 1800
         if (now - ts) < ttl:
             return valid
-    det = parse_movie_details(url)
-    has_links = bool(det.get("success")) and (
-        len(det.get("qualities") or []) > 0 or len(det.get("seasons") or []) > 0
-    )
-    err_str = str(det.get("error", "") or "")
-    # Cache both valid posts and deterministic dead posts (404 / 0 links)
-    if has_links or ('404' in err_str) or det.get("success"):
+    with _DETAILS_CACHE_LOCK:
+        dc = _DETAILS_CACHE.get(slug)
+        if dc and (now - dc[0]) < 300:
+            d = dc[1]
+            has_l = bool(d.get("success")) and (
+                len(d.get("qualities") or []) > 0
+                or len(d.get("seasons") or []) > 0
+                or len(d.get("packs") or []) > 0
+            )
+            _POST_VALID_CACHE[slug] = (now, has_l)
+            return has_l
+    try:
+        if _is_4khdhub_url(url):
+            html, _ = fetch_html(url, timeout=6)
+        else:
+            html, _ = _fetch_hdhub4u_html(url, timeout=6)
+        if not html or re.search(r'<title>\s*Page not found', html, re.I):
+            _POST_VALID_CACHE[slug] = (now, False)
+            return False
+        has_links = bool(_QUICK_PLAYABLE_RE.search(html))
         _POST_VALID_CACHE[slug] = (now, has_links)
-    return has_links
+        return has_links
+    except urllib.error.HTTPError as he:
+        if he.code == 404:
+            _POST_VALID_CACHE[slug] = (now, False)
+            return False
+        return True
+    except Exception:
+        return False
 
-def _filter_playable_items(items, max_workers=10):
+def _filter_playable_items(items, max_workers=12):
     """Filters out 404 / dead / no-link posts cleanly, falling back if transient network errors drop all cards."""
     if not items:
         return []
@@ -8797,7 +9075,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         movieBox.style.display = 'block';
         seriesBox.style.display = 'none';
         panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        select.innerHTML = '<option>Loading qualities, IMDb &amp; CDN mirrors...</option>';
+        select.innerHTML = '<option value="">Loading qualities, IMDb &amp; CDN mirrors...</option>';
         try {
             const resp = await fetch('/api/movie?url=' + encodeURIComponent(movie.permalink));
             const details = await resp.json();
@@ -10226,7 +10504,55 @@ html, body { max-width: 100%; overflow-x: hidden; }
         return Math.max(0, (vipState.unlockUntilPerfMs - performance.now()) / 1000);
     }
 
-    function applyVipUiState(upgradeModeArg) {
+    let _lastVipBodyKey = '';
+    let _lastVipGridKey = '';
+    let _lastNavVipTxt = '';
+
+    function _tickVipCountdownUi() {
+        const rem = _vipRemainingNow();
+        const isActive = Boolean(vipState.active && rem > 0);
+        if (!isActive && vipState.active) {
+            return false;
+        }
+        const navLbl = document.getElementById('btnVipNavLabel');
+        if (navLbl) {
+            const compactNav = window.innerWidth <= 480;
+            const remTxt = _fmtVipRem(rem, compactNav);
+            let nextTxt = 'VIP Locked';
+            if (isActive) {
+                if (vipState.allow_4k) nextTxt = compactNav ? `4K ${remTxt}` : `4K VIP ${remTxt}`;
+                else if (vipState.allow_download) nextTxt = compactNav ? `DL ${remTxt}` : `VIP+DL ${remTxt}`;
+                else nextTxt = compactNav ? `HD ${remTxt}` : `HD VIP ${remTxt}`;
+            }
+            if (nextTxt !== _lastNavVipTxt) {
+                _lastNavVipTxt = nextTxt;
+                navLbl.textContent = nextTxt;
+            }
+        }
+        const vipOv = document.getElementById('vipUnlockModal');
+        const vipModalOpen = Boolean(vipOv && vipOv.classList.contains('open'));
+        if (vipModalOpen) {
+            const stPill = document.getElementById('vipModalStatePill');
+            if (stPill) {
+                if (!isActive) stPill.textContent = 'Status: Locked';
+                else if (vipState.allow_4k) stPill.textContent = `4K VIP • ${_fmtVipRem(rem)} left`;
+                else if (vipState.allow_download) stPill.textContent = `DL VIP • ${_fmtVipRem(rem)} (4K Locked)`;
+                else stPill.textContent = `HD VIP • ${_fmtVipRem(rem)} (DL & 4K Locked)`;
+            }
+            const activeBox = document.getElementById('vipActiveBox');
+            if (activeBox && isActive) {
+                const tierSummary = vipState.allow_4k
+                    ? 'ALL FEATURES + 4K ULTRA + DOWNLOADS UNLOCKED'
+                    : (vipState.allow_download
+                        ? 'HD/1080p STREAMING + OFFLINE DOWNLOADS (4K Locked)'
+                        : 'HD/1080p STREAMING ONLY (Downloads Need 3M+ • 4K Needs 6M+)');
+                activeBox.textContent = `Key: ${vipState.code}\nPlan: ${vipState.label || 'VIP Pass'}\nAccess Tier: ${tierSummary}\nTime Left: ${_fmtVipRem(rem)} | Device 1/${vipState.max_devices || 1}`;
+            }
+        }
+        return true;
+    }
+
+    function applyVipUiState(upgradeModeArg, forceRenderGrid) {
         const upgMode = _vipNormalizeUpgradeMode(upgradeModeArg);
         currentVipUpgradeMode = upgMode;
         const rem = _vipRemainingNow();
@@ -10240,33 +10566,64 @@ html, body { max-width: 100%; overflow-x: hidden; }
         }
         const is4kLocked = isActive && !vipState.allow_4k;
         const isDlLocked = isActive && !vipState.allow_download;
-        document.body.classList.toggle('sh-vip-locked', !isActive);
-        document.body.classList.toggle('sh-vip-4k-locked', is4kLocked);
-        document.body.classList.toggle('sh-vip-dl-locked', isDlLocked);
 
-        const navPill = document.getElementById('btnVipNavPill');
-        const navLbl = document.getElementById('btnVipNavLabel');
-        if (navPill) {
-            navPill.classList.toggle('unlocked', isActive && vipState.allow_4k);
-            navPill.classList.toggle('hd-only', is4kLocked);
+        const bodyKey = `${isActive ? 1 : 0}|${is4kLocked ? 1 : 0}|${isDlLocked ? 1 : 0}|${vipState.code}|${vipState.device_id}|${upgMode}`;
+        const stateChanged = (bodyKey !== _lastVipBodyKey);
+        if (stateChanged) {
+            _lastVipBodyKey = bodyKey;
+            document.body.classList.toggle('sh-vip-locked', !isActive);
+            document.body.classList.toggle('sh-vip-4k-locked', is4kLocked);
+            document.body.classList.toggle('sh-vip-dl-locked', isDlLocked);
+
+            const navPill = document.getElementById('btnVipNavPill');
+            if (navPill) {
+                navPill.classList.toggle('unlocked', isActive && vipState.allow_4k);
+                navPill.classList.toggle('hd-only', is4kLocked);
+            }
+            _syncHeroVipState();
+
+            const dlBan = document.getElementById('downloadsVipBanner');
+            if (dlBan) dlBan.style.display = (!isActive || isDlLocked) ? 'block' : 'none';
+            const dlBtnDetails = document.getElementById('btnDownloadQuality');
+            if (dlBtnDetails) dlBtnDetails.title = (!isActive || isDlLocked) ? 'Offline Downloads require a 3M+ VIP Plan' : 'Download for offline viewing';
+            const dlBtnActive = document.getElementById('btnOfflineDownloadActive');
+            if (dlBtnActive) dlBtnActive.title = (!isActive || isDlLocked) ? 'Offline Downloads require a 3M+ VIP Plan' : 'Save for offline viewing';
+
+            const stPill = document.getElementById('vipModalStatePill');
+            if (stPill) stPill.classList.toggle('new', isActive);
+            const devPill = document.getElementById('vipModalDevicePill');
+            if (devPill) {
+                const did = vipState.device_id ? ` • ${String(vipState.device_id).slice(0, 8)}` : '';
+                devPill.textContent = `1 Key = ${vipState.max_devices || 1} Device${did}`;
+            }
+            const entryWrap = document.getElementById('vipKeyEntryWrap');
+            const activeWrap = document.getElementById('vipActiveWrap');
+            const showEntry = (!isActive) || (is4kLocked && upgMode === '4k') || (isDlLocked && upgMode === 'download');
+            if (entryWrap) entryWrap.style.display = showEntry ? 'block' : 'none';
+            if (activeWrap) activeWrap.style.display = isActive ? 'block' : 'none';
+            const desc = document.getElementById('vipModalDesc');
+            if (desc) {
+                if (is4kLocked && upgMode === '4k') {
+                    desc.textContent = '4K UHD & Cinema Vault are locked on your current plan. Upgrade with a 6 Months (Rs 199) or 1 Year (Rs 349) Access Key below:';
+                } else if (isDlLocked && upgMode === 'download') {
+                    desc.textContent = 'Offline Downloads are locked on 15 Days and 1 Month plans. Upgrade with a 3 Months (Rs 119), 6 Months (Rs 199), or 1 Year (Rs 349) Access Key below:';
+                } else if (isActive) {
+                    if (vipState.allow_4k) desc.textContent = '4K Ultra VIP is active — all HD/1080p streams, offline downloads, and 4K HDR Cinema Vault titles are unlocked!';
+                    else if (vipState.allow_download) desc.textContent = 'Offline Downloads VIP is active — HD/1080p streaming & offline downloads are unlocked (6M/1Y plan required for 4K).';
+                    else desc.textContent = 'HD Streaming VIP is active — all HD/1080p streaming is unlocked (3M+ plan required for offline downloads, 6M+ for 4K).';
+                } else {
+                    desc.textContent = vipState.reason || '15 Days & 1 Month unlock HD/1080p streaming only. 3 Months unlocks Offline Downloads. 6 Months & 1 Year unlock 4K HDR.';
+                }
+            }
+            const secSub = document.getElementById('vipPlansSectionSub');
+            if (secSub) {
+                if (is4kLocked && upgMode === '4k') secSub.textContent = 'Showing 4K-eligible plans (6M+)';
+                else if (isDlLocked && upgMode === 'download') secSub.textContent = 'Showing Offline Download plans (3M+)';
+                else secSub.textContent = '1 Key = 1 Device • Instant Email Request';
+            }
+            const supMail = document.getElementById('vipSupportMailLink');
+            if (supMail) supMail.href = _vipPlanMailtoUrl();
         }
-        if (navLbl) {
-            const compactNav = window.innerWidth <= 480;
-            const remTxt = _fmtVipRem(rem, compactNav);
-            if (!isActive) navLbl.textContent = 'VIP Locked';
-            else if (vipState.allow_4k) navLbl.textContent = compactNav ? `4K ${remTxt}` : `4K VIP ${remTxt}`;
-            else if (vipState.allow_download) navLbl.textContent = compactNav ? `DL ${remTxt}` : `VIP+DL ${remTxt}`;
-            else navLbl.textContent = compactNav ? `HD ${remTxt}` : `HD VIP ${remTxt}`;
-        }
-
-        _syncHeroVipState();
-
-        const dlBan = document.getElementById('downloadsVipBanner');
-        if (dlBan) dlBan.style.display = (!isActive || isDlLocked) ? 'block' : 'none';
-        const dlBtnDetails = document.getElementById('btnDownloadQuality');
-        if (dlBtnDetails) dlBtnDetails.title = (!isActive || isDlLocked) ? 'Offline Downloads require a 3M+ VIP Plan' : 'Download for offline viewing';
-        const dlBtnActive = document.getElementById('btnOfflineDownloadActive');
-        if (dlBtnActive) dlBtnActive.title = (!isActive || isDlLocked) ? 'Offline Downloads require a 3M+ VIP Plan' : 'Save for offline viewing';
 
         const menuSub = document.getElementById('menuSubVip');
         if (menuSub) {
@@ -10276,64 +10633,22 @@ html, body { max-width: 100%; overflow-x: hidden; }
             else menuSub.textContent = `HD Streaming Only (DL & 4K Locked) • ${_fmtVipRem(rem)} left (${vipState.code})`;
         }
 
-        const stPill = document.getElementById('vipModalStatePill');
-        const devPill = document.getElementById('vipModalDevicePill');
-        const entryWrap = document.getElementById('vipKeyEntryWrap');
-        const activeWrap = document.getElementById('vipActiveWrap');
-        const activeBox = document.getElementById('vipActiveBox');
-        const desc = document.getElementById('vipModalDesc');
-        const secSub = document.getElementById('vipPlansSectionSub');
+        _tickVipCountdownUi();
 
-        if (stPill) {
-            if (!isActive) stPill.textContent = 'Status: Locked';
-            else if (vipState.allow_4k) stPill.textContent = `4K VIP • ${_fmtVipRem(rem)} left`;
-            else if (vipState.allow_download) stPill.textContent = `DL VIP • ${_fmtVipRem(rem)} (4K Locked)`;
-            else stPill.textContent = `HD VIP • ${_fmtVipRem(rem)} (DL & 4K Locked)`;
-            stPill.classList.toggle('new', isActive);
+        const vipOv = document.getElementById('vipUnlockModal');
+        const vipModalOpen = Boolean(vipOv && vipOv.classList.contains('open'));
+        const gridKey = `${bodyKey}|${selectedPlanIdUi}|${(vipState.plans || []).length}`;
+        if (forceRenderGrid || (vipModalOpen && gridKey !== _lastVipGridKey) || !_lastVipGridKey) {
+            _lastVipGridKey = gridKey;
+            _renderVipPlansGrid(upgMode);
         }
-        if (devPill) {
-            const did = vipState.device_id ? ` • ${String(vipState.device_id).slice(0, 8)}` : '';
-            devPill.textContent = `1 Key = ${vipState.max_devices || 1} Device${did}`;
-        }
-        const showEntry = (!isActive) || (is4kLocked && upgMode === '4k') || (isDlLocked && upgMode === 'download');
-        if (entryWrap) entryWrap.style.display = showEntry ? 'block' : 'none';
-        if (activeWrap) activeWrap.style.display = isActive ? 'block' : 'none';
-        if (desc) {
-            if (is4kLocked && upgMode === '4k') {
-                desc.textContent = '4K UHD & Cinema Vault are locked on your current plan. Upgrade with a 6 Months (Rs 199) or 1 Year (Rs 349) Access Key below:';
-            } else if (isDlLocked && upgMode === 'download') {
-                desc.textContent = 'Offline Downloads are locked on 15 Days and 1 Month plans. Upgrade with a 3 Months (Rs 119), 6 Months (Rs 199), or 1 Year (Rs 349) Access Key below:';
-            } else if (isActive) {
-                if (vipState.allow_4k) desc.textContent = '4K Ultra VIP is active — all HD/1080p streams, offline downloads, and 4K HDR Cinema Vault titles are unlocked!';
-                else if (vipState.allow_download) desc.textContent = 'Offline Downloads VIP is active — HD/1080p streaming & offline downloads are unlocked (6M/1Y plan required for 4K).';
-                else desc.textContent = 'HD Streaming VIP is active — all HD/1080p streaming is unlocked (3M+ plan required for offline downloads, 6M+ for 4K).';
-            } else {
-                desc.textContent = vipState.reason || '15 Days & 1 Month unlock HD/1080p streaming only. 3 Months unlocks Offline Downloads. 6 Months & 1 Year unlock 4K HDR.';
-            }
-        }
-        if (secSub) {
-            if (is4kLocked && upgMode === '4k') secSub.textContent = 'Showing 4K-eligible plans (6M+)';
-            else if (isDlLocked && upgMode === 'download') secSub.textContent = 'Showing Offline Download plans (3M+)';
-            else secSub.textContent = '1 Key = 1 Device • Instant Email Request';
-        }
-        if (activeBox && isActive) {
-            const tierSummary = vipState.allow_4k
-                ? 'ALL FEATURES + 4K ULTRA + DOWNLOADS UNLOCKED'
-                : (vipState.allow_download
-                    ? 'HD/1080p STREAMING + OFFLINE DOWNLOADS (4K Locked)'
-                    : 'HD/1080p STREAMING ONLY (Downloads Need 3M+ • 4K Needs 6M+)');
-            activeBox.textContent = `Key: ${vipState.code}\nPlan: ${vipState.label || 'VIP Pass'}\nAccess Tier: ${tierSummary}\nTime Left: ${_fmtVipRem(rem)} | Device 1/${vipState.max_devices || 1}`;
-        }
-        const supMail = document.getElementById('vipSupportMailLink');
-        if (supMail) supMail.href = _vipPlanMailtoUrl();
-        _renderVipPlansGrid(upgMode);
     }
 
     function _restartVipTicker() {
         if (vipTickerTimer) { clearInterval(vipTickerTimer); vipTickerTimer = null; }
         if (!vipState.active) return;
         const rem0 = _vipRemainingNow();
-        const stepMs = rem0 <= 120 ? 250 : 2000;
+        const stepMs = rem0 <= 65 ? 1000 : 5000;
         vipTickerTimer = setInterval(() => {
             const rem = _vipRemainingNow();
             if (rem <= 0) {
@@ -10344,7 +10659,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 vipState.allow_download = false;
                 vipState.remaining_sec = 0;
                 vipState.reason = 'VIP Key time expired — please enter a new key';
-                applyVipUiState(false);
+                applyVipUiState(false, true);
                 try {
                     const iw = document.getElementById('inlineWebPlayerModal');
                     if (iw && iw.classList.contains('open')) closeInlinePlayer();
@@ -10353,8 +10668,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 fetch('/api/vip/status').catch(() => {});
                 return;
             }
-            applyVipUiState(currentVipUpgradeMode);
-            if (stepMs > 500 && rem <= 120) _restartVipTicker();
+            _tickVipCountdownUi();
+            if (stepMs > 1500 && rem <= 65) _restartVipTicker();
         }, stepMs);
     }
 
@@ -10408,9 +10723,9 @@ html, body { max-width: 100%; overflow-x: hidden; }
         } else if (upgMode === '4k' && (!selectedPlanIdUi || (selectedPlanIdUi !== '6m' && selectedPlanIdUi !== '1y'))) {
             selectedPlanIdUi = '6m';
         }
-        applyVipUiState(upgMode);
         const ov = document.getElementById('vipUnlockModal');
         if (ov) ov.classList.add('open');
+        applyVipUiState(upgMode, true);
         _syncFullPageView();
         if (!upgMode) refreshVipStatus(Boolean(fromPlayer));
         if (!vipState.active || upgMode) {

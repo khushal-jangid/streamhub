@@ -345,7 +345,7 @@ ADMIN_HTML = r"""<!doctype html>
 <div id="toast"></div>
 <div class="wrap">
   <div class="card">
-    <h1>StreamHub VIP Admin Panel <span class="badge">streamhub-vip • v2.6.2</span></h1>
+    <h1>StreamHub VIP Admin Panel <span class="badge">streamhub-vip • v2.6.3</span></h1>
     <div class="sub">15 Days / 1 Month (HD/1080p Streaming Only — Downloads &amp; 4K Locked), 3 Months (HD/1080p + Offline Downloads — 4K Locked), &amp; 6 Months / 1 Year (Offline Downloads + 4K Ultra HDR Unlocked). Default: 1 Key = 1 Device.</div>
     <div class="row">
       <input id="saPath" style="flex:1;min-width:260px" placeholder="Service Account JSON path">

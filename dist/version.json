@@ -1,13 +1,13 @@
 {
-    "version": "2.6.2",
-    "download_url": "https://github.com/khushal-jangid/streamhub/releases/download/v2.6.2/StreamHub.exe",
-    "sha256": "409d90c05620a6584d6fdb7efb933dc5c9dcad6fcfe9ea7eff56b365d9a67498",
-    "size_bytes": 87770589,
-    "apk_download_url": "https://github.com/khushal-jangid/streamhub/releases/download/v2.6.2/StreamHub.apk",
-    "apk_sha256": "fe8ecacfda93515f34c4f79e19ba789894caa4ac1f9769f7395144e20d2088e0",
-    "apk_size_bytes": 78114804,
-    "py_download_url": "https://github.com/khushal-jangid/streamhub/releases/download/v2.6.2/streamhub_app.py",
-    "py_sha256": "fa9426b9858a2d125a0f7d1e15272da1e7197a4b206c6bba6fac17cfb3b113f6",
+    "version": "2.6.3",
+    "download_url": "https://github.com/khushal-jangid/streamhub/releases/download/v2.6.3/StreamHub.exe",
+    "sha256": "8f71ca7ea817018b75e821e91c19f8989e1df70f887d59016021020e54595745",
+    "size_bytes": 87779547,
+    "apk_download_url": "https://github.com/khushal-jangid/streamhub/releases/download/v2.6.3/StreamHub.apk",
+    "apk_sha256": "072a03a8457c95cd6abdaf4cae420a06d1d344726dc386cd60926f038d7b0b52",
+    "apk_size_bytes": 78123696,
+    "py_download_url": "https://github.com/khushal-jangid/streamhub/releases/download/v2.6.3/streamhub_app.py",
+    "py_sha256": "407c66ebcbea7c7babfa660f624a27f073e89c0ae62838beb3f0a87615b44163",
     "min_apk_version_code": 16,
-    "notes": "v2.6.2 (Full APK & Desktop): Offline Downloads gated strictly to 3 Months+ plans (15D & 1M streaming only), dedicated full-page VIP Access Key screen with 5 Plan Cards & automatic pre-filled email purchase requests (khushalsharma4543@gmail.com), and 100% pure English UI across Android, Desktop & Admin."
+    "notes": "v2.6.3 (Critical Playback & Speed Fix): Restores fast playback across all Movies and Web Series via Happy-Eyeballs smart IP failover + OS-first DNS with DoH bypass fallback, speeds up Home Hub catalog loading ~15x (from 70s+ to ~4-5s), and eliminates VIP countdown UI lag."
 }
