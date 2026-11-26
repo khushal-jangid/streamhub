@@ -53,7 +53,7 @@ if sys.platform == 'win32':
     except Exception:
         pass
 
-APP_VERSION = "2.5.5"
+APP_VERSION = "2.5.6"
 DEFAULT_UPDATE_URL = "khushal-jangid/streamhub"
 STREAMHUB_UPDATE_URL = os.environ.get("STREAMHUB_UPDATE_URL", "").strip()
 _ENV_DATA_DIR = os.environ.get("STREAMHUB_DATA_DIR", "").strip()
@@ -2573,6 +2573,20 @@ def get_app_info_payload():
         "window_hwnd": int(_WINDOW_HWND or 0),
     }
 
+def _build_update_feed_candidates(eff_url):
+    """Build ordered manifest URLs, bypassing api.github.com 60 req/hr rate limits."""
+    urls = []
+    u = str(eff_url or '').strip()
+    if not u:
+        return urls
+    m_api = re.match(r'^https?://api\.github\.com/repos/([^/]+/[^/]+)/releases/latest/?$', u, re.I)
+    if m_api:
+        repo = m_api.group(1)
+        urls.append(f"https://github.com/{repo}/releases/latest/download/version.json")
+        urls.append(f"https://raw.githubusercontent.com/{repo}/main/dist/version.json")
+    urls.append(u)
+    return urls
+
 def check_app_update():
     info = get_app_info_payload()
     eff_url, _ = _get_effective_update_url()
@@ -2595,10 +2609,25 @@ def check_app_update():
             "message": f"StreamHub v{APP_VERSION} ready! Updates push karne ke liye GitHub repo (owner/repo) ya version.json URL set karein.",
         }
     try:
-        headers = {"User-Agent": f"StreamHub/{APP_VERSION}", "Accept": "application/json"}
-        req = urllib.request.Request(eff_url, headers=headers)
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            remote = json.loads(resp.read().decode('utf-8', errors='replace'))
+        headers = {
+            "User-Agent": f"StreamHub/{APP_VERSION}",
+            "Accept": "application/json",
+            "Cache-Control": "no-cache",
+        }
+        remote = None
+        last_err = None
+        for cand_url in _build_update_feed_candidates(eff_url):
+            try:
+                req = urllib.request.Request(cand_url, headers=headers)
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    parsed = json.loads(resp.read().decode('utf-8', errors='replace'))
+                if isinstance(parsed, dict) and (parsed.get('version') or ('tag_name' in parsed and 'assets' in parsed)):
+                    remote = parsed
+                    break
+            except Exception as ex:
+                last_err = ex
+        if remote is None:
+            raise last_err or RuntimeError("Update manifest unreachable")
 
         latest = ""
         dl_url = ""
@@ -5125,6 +5154,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .live-dl-banner.show { display: block; animation: toastIn 0.2s ease; }
 
 /* Startup Update Available Modal */
+#startupUpdateModal.modal-overlay.sh-full-page.sh-page-visible {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: 20px 16px !important;
+}
 .startup-update-card {
     width: 100%; max-width: 400px; text-align: left;
     background: var(--surface-solid); border: 1px solid var(--border-strong);
@@ -6515,7 +6552,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
 </div>
 
 <!-- Startup Update Available Popup -->
-<div class="modal-overlay" id="startupUpdateModal" onclick="if(event.target===this) closeStartupUpdateModal(true)" role="dialog" aria-modal="true" aria-labelledby="startupUpdTitle" style="z-index:160;">
+<div class="modal-overlay fullscreen-mobile sh-full-page" id="startupUpdateModal" onclick="if(event.target===this) closeStartupUpdateModal(true)" role="dialog" aria-modal="true" aria-labelledby="startupUpdTitle">
     <div class="startup-update-card">
         <div class="startup-update-head">
             <div style="display:flex;align-items:center;gap:11px;min-width:0;">
@@ -6626,6 +6663,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         storage: { used_bytes: 0, limit_gb: 4, limit_bytes: 4294967296, active_count: 0, completed_count: 0, paused_count: 0, total_count: 0 }
     };
     let startupPopupShownForVer = "";
+    let startupUpdRetried = false;
     const _SH_ICONS = {
         download: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
         play: '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"/></svg>',
@@ -7142,7 +7180,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         syncProgressFromServer();
         initSettingsAndDownloads();
         checkAppUpdate(false);
-        setTimeout(() => checkAppUpdate(true, false, true), 1200);
+        setTimeout(() => checkAppUpdate(true, false, true), 700);
         loadLanQr();
         loadHomeHub();
         const urlParams = new URLSearchParams(window.location.search);
@@ -9086,7 +9124,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
     }
 
     const SH_FULL_PAGES = [
-        'settingsModalOverlay', 'profilePageModal', 'themePageModal',
+        'startupUpdateModal', 'settingsModalOverlay', 'profilePageModal', 'themePageModal',
         'dlSettingsPageModal', 'toolsPageModal', 'updateModalOverlay', 'downloadsModalOverlay', 'hub4kPageModal'
     ];
     let hub4kItems = [];
@@ -9963,6 +10001,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         const lv = String(data.latest_version || '');
         if (lv && startupPopupShownForVer === lv) return;
         const anySubOpen = SH_FULL_PAGES.some(id => {
+            if (id === 'startupUpdateModal') return false;
             const el = document.getElementById(id);
             return el && el.classList.contains('open');
         });
@@ -9980,7 +10019,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         const pf = document.getElementById('startupUpdProgFill');
         const stEl = document.getElementById('startupUpdStatus');
 
-        if (oldV) oldV.textContent = 'v' + (data.version || '2.5.4');
+        if (oldV) oldV.textContent = 'v' + (data.version || (userSettingsState && userSettingsState.version) || '2.5.6');
         if (newV) newV.textContent = 'v' + (lv || 'Latest');
         if (notes) notes.textContent = data.notes || `StreamHub v${lv} update available.`;
         if (pw) pw.style.display = 'none';
@@ -9992,6 +10031,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
             btn.textContent = useOta ? `Instant Update v${lv}` : `Update to v${lv}`;
         }
         if (ov) ov.classList.add('open');
+        _syncFullPageView();
     }
 
     function closeStartupUpdateModal(remember) {
@@ -10000,6 +10040,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         }
         const ov = document.getElementById('startupUpdateModal');
         if (ov) ov.classList.remove('open');
+        _syncFullPageView();
     }
 
     function triggerStartupUpdateNow() {
@@ -10246,7 +10287,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         if (inModal && box) box.textContent = 'Checking GitHub for updates...';
         if (inModal && chkBtn) { chkBtn.disabled = true; chkBtn.textContent = 'Checking...'; }
         try {
-            const resp = await fetch(manual ? '/api/check_update' : '/api/app_info');
+            const resp = await fetch((manual ? '/api/check_update?_t=' : '/api/app_info?_t=') + Date.now(), { cache: 'no-store' });
             const data = await resp.json();
             if (data && data.version) {
                 const hasUpd = !!data.update_available;
@@ -10299,13 +10340,19 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 if (data && data.update_available) {
                     pendingUpdateInfo = data;
                     openStartupUpdatePopup(data);
+                } else if ((!data || data.success === false) && !startupUpdRetried) {
+                    startupUpdRetried = true;
+                    setTimeout(() => checkAppUpdate(true, false, true), 3500);
                 }
             } else if (manual) {
-                showToast(data.message || `StreamHub v${data.version || '2.5.4'} active`);
+                showToast(data.message || `StreamHub v${data.version || '2.5.6'} active`);
             }
         } catch (e) {
             if (inModal && box) box.textContent = 'Update check error';
-            else if (manual && !silentBg) showToast('Update check failed', 'err');
+            else if (silentBg && !startupUpdRetried) {
+                startupUpdRetried = true;
+                setTimeout(() => checkAppUpdate(true, false, true), 3500);
+            } else if (manual && !silentBg) showToast('Update check failed', 'err');
         } finally {
             if (inModal && chkBtn) { chkBtn.disabled = false; chkBtn.textContent = 'Check for Updates'; }
         }
