@@ -1,6 +1,6 @@
 ====================================================
   StreamHub - Direct Movie Streamer
-  Version 2.0 (4KHDHub + HubCloud + HDHub4u)
+  Version 2.0 
 ====================================================
 
 HOW TO RUN:
@@ -11,14 +11,10 @@ HOW TO RUN:
 
 SUPPORTED LINKS:
 ----------------
-✓ https://hubcloud.ist/drive/...
-✓ https://4khdhub.one/...
-✓ https://new8.hdhub4u.cl/...
 ✓ Many more movie hosting sites
 
 FEATURES:
 ---------
-✓ Movie Search    — Direct search on HDHub4u
 ✓ Link Resolver   — Automatically extracts direct CDN streams
 ✓ Browser Player  — Stream MP4/HLS directly in your browser
 ✓ Multi-Audio     — Switch Hindi/English/Tamil/Telugu audio tracks
