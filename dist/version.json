@@ -1,13 +1,13 @@
 {
-    "version":  "2.6.1",
-    "download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.0/StreamHub.exe",
-    "sha256":  "7723fd9cd24e81c3efbf87c8184fecdbb37191504e6e82c85a7adcd7a5a2250c",
-    "size_bytes":  87698023,
-    "apk_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.6.1/StreamHub.apk",
-    "apk_sha256":  "3fd07079f3d69fd0230663e3eeccd9abab0512538d1c3520a3f1379cbd375f17",
-    "apk_size_bytes":  78106848,
-    "py_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.6.1/streamhub_app.py",
-    "py_sha256":  "e512fa4368baea4d6eebe4b8f82724bc92c25a45ac81a355d82883a70d12816c",
-    "min_apk_version_code":  15,
-    "notes":  "v2.6.1 (Full APK): Added 5 VIP Pricing Plans (15 Days Rs 29, 1 Month Rs 49, 3 Months Rs 119 with 4K Locked; 6 Months Rs 199 and 1 Year Rs 349 with 4K HDR Unlocked) + in-player 4K lock \u0026 upgrade prompt + updated Admin Panel."
+    "version": "2.6.2",
+    "download_url": "https://github.com/khushal-jangid/streamhub/releases/download/v2.6.2/StreamHub.exe",
+    "sha256": "409d90c05620a6584d6fdb7efb933dc5c9dcad6fcfe9ea7eff56b365d9a67498",
+    "size_bytes": 87770589,
+    "apk_download_url": "https://github.com/khushal-jangid/streamhub/releases/download/v2.6.2/StreamHub.apk",
+    "apk_sha256": "fe8ecacfda93515f34c4f79e19ba789894caa4ac1f9769f7395144e20d2088e0",
+    "apk_size_bytes": 78114804,
+    "py_download_url": "https://github.com/khushal-jangid/streamhub/releases/download/v2.6.2/streamhub_app.py",
+    "py_sha256": "fa9426b9858a2d125a0f7d1e15272da1e7197a4b206c6bba6fac17cfb3b113f6",
+    "min_apk_version_code": 16,
+    "notes": "v2.6.2 (Full APK & Desktop): Offline Downloads gated strictly to 3 Months+ plans (15D & 1M streaming only), dedicated full-page VIP Access Key screen with 5 Plan Cards & automatic pre-filled email purchase requests (khushalsharma4543@gmail.com), and 100% pure English UI across Android, Desktop & Admin."
 }

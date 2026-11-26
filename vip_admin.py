@@ -99,7 +99,7 @@ def find_service_account_json():
 def _get_admin_access_token(sa_path=None):
     sp = sa_path or find_service_account_json()
     if not _is_valid_sa_json(sp):
-        raise RuntimeError("Firebase Service Account JSON nahi mila — Settings me Service Account .json path set karein.")
+        raise RuntimeError("Firebase Service Account JSON not found — please set the Service Account .json path in Settings.")
     now = time.time()
     with _TOKEN_LOCK:
         if _OAUTH_CACHE["token"] and _OAUTH_CACHE["sa_path"] == sp and (_OAUTH_CACHE["expires_at"] - now) > 120:
@@ -181,7 +181,7 @@ def _gen_vip_code(duration_seconds, allow_4k=False, custom_code=""):
     c = re.sub(r'[^A-Z0-9_-]', '', str(custom_code or "").strip().upper())
     if c:
         if len(c) < 6 or len(c) > 40:
-            raise ValueError("Custom key 6 se 40 characters ka hona chahiye")
+            raise ValueError("Custom key must be between 6 and 40 characters")
         return c
     tag = _fmt_duration_tag(duration_seconds, allow_4k=allow_4k)
     alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -234,7 +234,7 @@ def _decode_doc(doc):
 def create_vip_key(duration_seconds, max_devices=1, label="", custom_code="", allow_4k=None, price_inr=None):
     dur = int(duration_seconds)
     if dur < 1 or dur > 315360000:
-        raise ValueError("Duration 1s se 315360000s ke beech hona chahiye")
+        raise ValueError("Duration must be between 1s and 315360000s")
     mdev = max(1, min(5, int(max_devices or 1)))
     eff_4k = (dur > VIP_4K_CUTOFF_SEC) if allow_4k is None else bool(allow_4k)
     code = _gen_vip_code(dur, allow_4k=eff_4k, custom_code=custom_code)
@@ -345,8 +345,8 @@ ADMIN_HTML = r"""<!doctype html>
 <div id="toast"></div>
 <div class="wrap">
   <div class="card">
-    <h1>StreamHub VIP Admin Panel <span class="badge">streamhub-vip • v2.6.1</span></h1>
-    <div class="sub">15 Din / 30 Din / 3 Months (Sab HD/1080p Unlocked — 4K Locked) &amp; 6 Months / 1 Year (Sab + 4K Ultra HDR Unlocked). Default: 1 Key = 1 Phone.</div>
+    <h1>StreamHub VIP Admin Panel <span class="badge">streamhub-vip • v2.6.2</span></h1>
+    <div class="sub">15 Days / 1 Month (HD/1080p Streaming Only — Downloads &amp; 4K Locked), 3 Months (HD/1080p + Offline Downloads — 4K Locked), &amp; 6 Months / 1 Year (Offline Downloads + 4K Ultra HDR Unlocked). Default: 1 Key = 1 Device.</div>
     <div class="row">
       <input id="saPath" style="flex:1;min-width:260px" placeholder="Service Account JSON path">
       <button class="btn" onclick="saveSa()">Connect JSON</button>
@@ -355,37 +355,37 @@ ADMIN_HTML = r"""<!doctype html>
   </div>
 
   <div class="card">
-    <h2 style="margin:0 0 8px;font-size:1.05rem">1. Premium Plans Choose Karein (Click to Select)</h2>
+    <h2 style="margin:0 0 8px;font-size:1.05rem">1. Choose a Premium Plan (Click to Select)</h2>
     <div class="plans-grid" id="plansGrid">
       <button type="button" class="plan-box active" data-plan="15d" onclick="pickPlan(1296000,29,false,'15 Days Starter',this)">
-        <div style="font-weight:800;font-size:.9rem">15 Din (Starter)</div>
+        <div style="font-weight:800;font-size:.9rem">15 Days (Starter)</div>
         <div class="plan-price">&#8377;29</div>
-        <div style="font-size:.74rem;color:#a1a1aa">All HD / 1080p</div>
-        <span class="plan-tag tag-hd">4K LOCKED</span>
+        <div style="font-size:.74rem;color:#a1a1aa">HD / 1080p Stream Only</div>
+        <span class="plan-tag tag-hd">NO DL • 4K LOCK</span>
       </button>
       <button type="button" class="plan-box" data-plan="30d" onclick="pickPlan(2592000,49,false,'1 Month Popular',this)">
-        <div style="font-weight:800;font-size:.9rem">1 Month (30 Din)</div>
+        <div style="font-weight:800;font-size:.9rem">1 Month (30 Days)</div>
         <div class="plan-price">&#8377;49</div>
-        <div style="font-size:.74rem;color:#a1a1aa">All HD / 1080p</div>
-        <span class="plan-tag tag-hd">4K LOCKED</span>
+        <div style="font-size:.74rem;color:#a1a1aa">HD / 1080p Stream Only</div>
+        <span class="plan-tag tag-hd">NO DL • 4K LOCK</span>
       </button>
-      <button type="button" class="plan-box" data-plan="3m" onclick="pickPlan(7776000,119,false,'3 Months Value HD',this)">
-        <div style="font-weight:800;font-size:.9rem">3 Months (90 Din)</div>
+      <button type="button" class="plan-box" data-plan="3m" onclick="pickPlan(7776000,119,false,'3 Months Value HD + DL',this)">
+        <div style="font-weight:800;font-size:.9rem">3 Months (90 Days)</div>
         <div class="plan-price">&#8377;119</div>
-        <div style="font-size:.74rem;color:#a1a1aa">All HD / 1080p</div>
-        <span class="plan-tag tag-hd">4K LOCKED</span>
+        <div style="font-size:.74rem;color:#a1a1aa">HD/1080p + Offline DL</div>
+        <span class="plan-tag tag-hd">DL ON • 4K LOCK</span>
       </button>
       <button type="button" class="plan-box" data-plan="6m" onclick="pickPlan(15552000,199,true,'6 Months 4K Ultra',this)">
-        <div style="font-weight:800;font-size:.9rem">6 Months (180 Din)</div>
+        <div style="font-weight:800;font-size:.9rem">6 Months (180 Days)</div>
         <div class="plan-price">&#8377;199</div>
-        <div style="font-size:.74rem;color:#a1a1aa">Full 4K HDR + Vault</div>
-        <span class="plan-tag tag-4k">4K UNLOCKED</span>
+        <div style="font-size:.74rem;color:#a1a1aa">Offline DL + 4K HDR Vault</div>
+        <span class="plan-tag tag-4k">DL + 4K UNLOCKED</span>
       </button>
       <button type="button" class="plan-box" data-plan="1y" onclick="pickPlan(31536000,349,true,'1 Year 4K Legend',this)">
-        <div style="font-weight:800;font-size:.9rem">1 Year (365 Din)</div>
+        <div style="font-weight:800;font-size:.9rem">1 Year (365 Days)</div>
         <div class="plan-price">&#8377;349</div>
-        <div style="font-size:.74rem;color:#a1a1aa">All 4K HDR + Max</div>
-        <span class="plan-tag tag-4k">4K UNLOCKED</span>
+        <div style="font-size:.74rem;color:#a1a1aa">All 4K HDR + Offline DL</div>
+        <span class="plan-tag tag-4k">DL + 4K UNLOCKED</span>
       </button>
     </div>
 
@@ -443,10 +443,14 @@ function pickPlan(s, price, is4k, lbl, btn){
   if(btn) btn.classList.add('active');
 }
 function fmtRem(s){ if(s<60) return Math.ceil(s)+'s'; if(s<3600) return Math.floor(s/60)+'m'; if(s<86400) return Math.floor(s/3600)+'h'; return Math.floor(s/86400)+'d'; }
+const DOWNLOAD_CUTOFF_SEC = 7776000;
 function buildShareMsg(it){
-  const qTxt = it.allow_4k ? 'Full 4K HDR + HD Unlocked' : 'All HD/1080p Unlocked (4K Locked - 6M+ me unlock)';
+  const hasDl = it.allow_4k || (Number(it.duration_seconds||0) >= DOWNLOAD_CUTOFF_SEC);
+  const qTxt = it.allow_4k
+    ? 'Full 4K UHD/HDR + HD Streaming + Offline Downloads Unlocked'
+    : (hasDl ? 'All HD/1080p Streaming + Offline Downloads Unlocked (4K Locked - 6M+)' : 'HD/1080p Streaming Only (Offline Downloads require 3M+ • 4K requires 6M+)');
   const prTxt = (it.price_inr!==null&&it.price_inr!==undefined)?` (Rs ${it.price_inr})`:'';
-  return `StreamHub VIP Key: ${it.code}\nPlan: ${it.label||'VIP Pass'}${prTxt}\nValidity: ${fmtRem(it.duration_seconds)} (${it.max_devices||1} Phone)\nQuality: ${qTxt}\nApp me 'VIP' button par click karke Key paste karein.`;
+  return `StreamHub VIP Key: ${it.code}\nPlan: ${it.label||'VIP Pass'}${prTxt}\nValidity: ${fmtRem(it.duration_seconds)} (${it.max_devices||1} Device)\nFeatures: ${qTxt}\nOpen StreamHub, tap the 'VIP' button, and paste your Access Key to unlock.`;
 }
 async function init(){
   const r=await (await fetch('/api/admin/init')).json();
@@ -454,7 +458,7 @@ async function init(){
   if(r.rules_text) document.getElementById('rulesTxt').value=r.rules_text;
   const st=document.getElementById('saStat');
   if(r.connected){ st.className='msg ok'; st.textContent='Connected to streamhub-vip!'; loadKeys(); }
-  else { st.className='msg err'; st.textContent='Service Account JSON select karein.'; }
+  else { st.className='msg err'; st.textContent='Please select the Service Account JSON file.'; }
 }
 async function saveSa(){
   const p=document.getElementById('saPath').value.trim();
@@ -503,7 +507,10 @@ async function loadKeys(){
     const stCls='st-'+it.state;
     const stTxt=it.state==='active'?`Active (${fmtRem(it.remaining_sec)} left)`:it.state.toUpperCase();
     const prTxt=(it.price_inr!==null&&it.price_inr!==undefined)?`&#8377;${it.price_inr}`:'-';
-    const tierBadge=it.allow_4k?'<span class="plan-tag tag-4k">4K ULTRA</span>':'<span class="plan-tag tag-hd">HD/1080p</span>';
+    const hasDl = it.allow_4k || (Number(it.duration_seconds||0) >= DOWNLOAD_CUTOFF_SEC);
+    const tierBadge = it.allow_4k
+      ? '<span class="plan-tag tag-4k">4K + DL</span>'
+      : (hasDl ? '<span class="plan-tag tag-hd">HD + DL</span>' : '<span class="plan-tag tag-hd">HD ONLY</span>');
     tb.innerHTML+=`<tr>
       <td><code>${it.code}</code></td>
       <td>${it.label||''}<br><small style="color:#71717a">${prTxt} • ${fmtRem(it.duration_seconds)}</small></td>
