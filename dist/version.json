@@ -1,13 +1,13 @@
 {
-    "version":  "2.5.9",
+    "version":  "2.6.0",
     "download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.0/StreamHub.exe",
     "sha256":  "7723fd9cd24e81c3efbf87c8184fecdbb37191504e6e82c85a7adcd7a5a2250c",
     "size_bytes":  87698023,
-    "apk_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.9/StreamHub.apk",
-    "apk_sha256":  "ba6ceff2b2e727e5610d02109bd4b760f95b798eefd18e7a142e52939dd5ff19",
-    "apk_size_bytes":  78080232,
-    "py_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.9/streamhub_app.py",
-    "py_sha256":  "b21b546f23083c55fc8879f21e16827e214c88c44d867c93888aeb189259a4be",
-    "min_apk_version_code":  12,
-    "notes":  "v2.5.9 (Android Instant OTA \u0026 APK): Fixed Web Series Episode 1-tap playback crash (getProgressForKey), added HBLInks per-episode multi-quality ABR (480p fast start + in-player Quality switching), direct HubCloud prioritization, and instant EP-01 background pre-warming."
+    "apk_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.6.0/StreamHub.apk",
+    "apk_sha256":  "12cda9f2810f774638a4ce4a205ad0ef2397de28ef7a69d725938e123e18efbf",
+    "apk_size_bytes":  78102568,
+    "py_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.6.0/streamhub_app.py",
+    "py_sha256":  "55db66300e5f64e5461d9fdf9279bc3cea07a5dbfa9f37fd940d7c472b4d944b",
+    "min_apk_version_code":  14,
+    "notes":  "v2.6.0 (Full APK): Added Firebase VIP Key lock/unlock system (supports 1s/2s/5s/10s test keys + 1-device lock + live player expiry check), built-in DoH (1.1.1.1/8.8.8.8) \u0026 4KHDHub fallback to fix catalog loading on Indian 4G SIMs, plus PC VIP Admin Panel."
 }

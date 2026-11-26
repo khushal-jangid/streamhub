@@ -23,4 +23,9 @@ streamhub_progress.json
 streamhub_config.json
 offline_downloads.json
 offline_movies/
+vip_admin_config.json
+*firebase-adminsdk*.json
+*service-account*.json
+google-services.json
+.firebase/
 *.tmp

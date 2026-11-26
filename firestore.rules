@@ -1,0 +1,256 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // This security rules file assumes the following data structures:
+    //
+    // Collection: vip_keys
+    // Document ID: {keyCode} (string, 6-40 chars)
+    // Fields:
+    //   - code: string (required, immutable, 6-40 chars, must equal keyCode)
+    //   - duration_seconds: int (required, immutable, 1..315360000;
+    //       supports 1s/2s/5s/10s test keys up to 10-year plans)
+    //   - max_devices: int (required, immutable, 1..5)
+    //   - revoked: bool (required, immutable by clients; must be false)
+    //   - device_ids: list<string> (required; initialized to [] by admin;
+    //       clients may append 1 distinct non-empty string [1-128 chars] per
+    //       update, up to max_devices total entries)
+    //   - activated_at: timestamp | null (required; null until first
+    //       activation, set to request.time on first activation, immutable
+    //       thereafter)
+    //   - label: string | null (optional admin metadata, max 500 chars,
+    //       immutable by clients)
+    //   - created_at: timestamp | null (optional admin metadata,
+    //       immutable by clients)
+    //
+    // Security & Access Model Notes:
+    //   - Database: streamhub-vip / (default) Standard edition.
+    //   - Auth: Firebase Anonymous Auth enabled (request.auth != null).
+    //   - Key lifecycle: Keys are provisioned and revoked exclusively via
+    //     Firebase Console / Admin SDK (create & delete denied to clients).
+    //   - Anti-enumeration: `list` is denied; possessing an exact keyCode
+    //     grants `get` for status checks and monotonic, append-only `update`
+    //     to activate and bind one device at a time.
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the caller is authenticated (including Anonymous Auth)
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if user owns the resource (for user-owned documents)
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Verify UID hasn't been tampered with on create
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) ||
+        request.resource.data.uid == request.auth.uid;
+    }
+
+    // Ensure uid field is not modified on update
+    function uidNotModified() {
+      return !('uid' in request.resource.data) ||
+        request.resource.data.uid == resource.data.uid;
+    }
+
+    // Validate required fields exist on the post-write document
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Validate that the post-write document contains only allowed fields
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // Validate that specified fields are not added, removed, or modified
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // Validate a single device ID string (non-empty, bounded length against DoS)
+    function isValidDeviceId(deviceId) {
+      return deviceId is string &&
+             deviceId.size() >= 1 &&
+             deviceId.size() <= 128;
+    }
+
+    // Ensure all bound device IDs in the list are distinct
+    function hasUniqueDeviceIds(deviceIds) {
+      return deviceIds.toSet().size() == deviceIds.size();
+    }
+
+    // Deep-validate device_ids list type, bounds (1..maxDevices, capped at 5),
+    // element types/lengths, and uniqueness
+    function isValidDeviceIdList(deviceIds, maxDevices) {
+      return deviceIds is list &&
+             deviceIds.size() >= 1 &&
+             deviceIds.size() <= maxDevices &&
+             deviceIds.size() <= 5 &&
+             isValidDeviceId(deviceIds[0]) &&
+             (deviceIds.size() < 2 || isValidDeviceId(deviceIds[1])) &&
+             (deviceIds.size() < 3 || isValidDeviceId(deviceIds[2])) &&
+             (deviceIds.size() < 4 || isValidDeviceId(deviceIds[3])) &&
+             (deviceIds.size() < 5 || isValidDeviceId(deviceIds[4])) &&
+             hasUniqueDeviceIds(deviceIds);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    // Validate full post-write schema and invariants for a VIP key document
+    function isValidVipKey(data, keyCode) {
+      return keyCode is string &&
+             keyCode.size() >= 6 &&
+             keyCode.size() <= 40 &&
+             data.keys().hasAll([
+               'code',
+               'duration_seconds',
+               'max_devices',
+               'revoked',
+               'device_ids',
+               'activated_at'
+             ]) &&
+             data.keys().hasOnly([
+               'code',
+               'duration_seconds',
+               'max_devices',
+               'revoked',
+               'device_ids',
+               'activated_at',
+               'label',
+               'created_at'
+             ]) &&
+             data.code is string &&
+             data.code == keyCode &&
+             data.code.size() >= 6 &&
+             data.code.size() <= 40 &&
+             data.duration_seconds is int &&
+             data.duration_seconds >= 1 &&
+             data.duration_seconds <= 315360000 &&
+             data.max_devices is int &&
+             data.max_devices >= 1 &&
+             data.max_devices <= 5 &&
+             data.revoked is bool &&
+             data.revoked == false &&
+             data.activated_at is timestamp &&
+             isValidDeviceIdList(data.device_ids, data.max_devices) &&
+             (!('label' in data) || data.label == null || (data.label is string && data.label.size() <= 500)) &&
+             (!('created_at' in data) || data.created_at == null || data.created_at is timestamp);
+    }
+
+    // ===============================================================
+    // State Transition Validators (vip_keys)
+    // ===============================================================
+
+    // Validate existing document preconditions before redemption/binding
+    function hasValidExistingVipKeyState(keyCode) {
+      return resource != null &&
+             keyCode is string &&
+             keyCode.size() >= 6 &&
+             keyCode.size() <= 40 &&
+             resource.data.keys().hasAll([
+               'code',
+               'duration_seconds',
+               'max_devices',
+               'revoked',
+               'device_ids',
+               'activated_at'
+             ]) &&
+             resource.data.revoked is bool &&
+             resource.data.revoked == false &&
+             resource.data.code is string &&
+             resource.data.code == keyCode &&
+             resource.data.duration_seconds is int &&
+             resource.data.duration_seconds >= 1 &&
+             resource.data.duration_seconds <= 315360000 &&
+             resource.data.max_devices is int &&
+             resource.data.max_devices >= 1 &&
+             resource.data.max_devices <= 5 &&
+             resource.data.device_ids is list;
+    }
+
+    // Ensure device_ids strictly appends 1 device without exceeding max_devices
+    function isValidDeviceListAppend() {
+      return resource.data.device_ids is list &&
+             request.resource.data.device_ids is list &&
+             request.resource.data.device_ids.size() == resource.data.device_ids.size() + 1 &&
+             request.resource.data.device_ids.size() <= resource.data.max_devices &&
+             request.resource.data.device_ids.hasAll(resource.data.device_ids);
+    }
+
+    // Transition A: First activation (activated_at transitions from null to request.time)
+    function isValidFirstActivation() {
+      return resource.data.activated_at == null &&
+             request.resource.data.activated_at == request.time;
+    }
+
+    // Transition B: Additional device binding while key is within active validity window
+    function isValidAdditionalDeviceBinding() {
+      return resource.data.activated_at != null &&
+             resource.data.activated_at is timestamp &&
+             resource.data.activated_at + duration.value(resource.data.duration_seconds, 's') > request.time &&
+             request.resource.data.activated_at == resource.data.activated_at;
+    }
+
+    // Combined update guard enforcing auth, immutability, schema, and state transition
+    function isValidVipKeyUpdate(keyCode) {
+      return isAuthenticated() &&
+             hasValidExistingVipKeyState(keyCode) &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+               'activated_at',
+               'device_ids'
+             ]) &&
+             areImmutableFieldsUnchanged([
+               'code',
+               'duration_seconds',
+               'max_devices',
+               'revoked',
+               'label',
+               'created_at'
+             ]) &&
+             isValidVipKey(request.resource.data, keyCode) &&
+             isValidDeviceListAppend() &&
+             (isValidFirstActivation() || isValidAdditionalDeviceBinding());
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    match /vip_keys/{keyCode} {
+      // Never allow listing/enumerating VIP keys
+      allow list: if false;
+
+      // Only Admin (Firebase Console / Admin SDK) can create or delete VIP keys
+      allow create, delete: if false;
+
+      // Authenticated clients holding an exact keyCode may read key status
+      allow get: if isAuthenticated();
+
+      // Clients may only activate an unactivated key or bind one additional device
+      // within the active non-expired, non-revoked window
+      allow update: if isValidVipKeyUpdate(keyCode);
+    }
+
+    // ===============================================================
+    // Default Deny Fallback
+    // ===============================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

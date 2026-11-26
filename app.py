@@ -40,6 +40,129 @@ try:
 except Exception:
     pass
 
+# Built-in DoH (Cloudflare 1.1.1.1 / Google 8.8.8.8) bypasses ISP 4G SIM DNS blocks & carrier IPv6 stalls
+_ORIG_GETADDRINFO = socket.getaddrinfo
+_DOH_LOCK = threading.Lock()
+_DOH_CACHE = {}  # {host_lower: (ts, [ipv4, ...])}
+_DOH_INFLIGHT = set()
+_DOH_PRIORITY_DOMAINS = (
+    'hdhub4u', '4khdhub', 'hblinks', 'hubcloud', 'hubdrive', 'hubcdn',
+    'pingora.fyi', 'gamerxyt', 'hdstream4u', 'gadgetsweb', 'cryptonewz', 'fsl'
+)
+
+def _is_ip_literal(h):
+    try:
+        socket.inet_pton(socket.AF_INET, h)
+        return True
+    except Exception:
+        pass
+    try:
+        socket.inet_pton(socket.AF_INET6, h)
+        return True
+    except Exception:
+        return False
+
+def _is_public_ipv4(ip):
+    if not ip or '.' not in ip:
+        return False
+    parts = ip.split('.')
+    if len(parts) != 4:
+        return False
+    try:
+        a, b = int(parts[0]), int(parts[1])
+    except Exception:
+        return False
+    if a in (0, 10, 127) or (a == 192 and b == 168) or (a == 172 and 16 <= b <= 31) or (a == 169 and b == 254):
+        return False
+    return True
+
+def _doh_lookup_ipv4(host):
+    hl = str(host or '').strip().lower()
+    if not hl:
+        return []
+    now = time.time()
+    with _DOH_LOCK:
+        hit = _DOH_CACHE.get(hl)
+        if hit:
+            ttl = 300 if hit[1] else 8
+            if (now - hit[0]) < ttl:
+                return list(hit[1])
+        if hl in _DOH_INFLIGHT:
+            return []
+        _DOH_INFLIGHT.add(hl)
+    ips = []
+    try:
+        endpoints = [
+            (f"https://1.1.1.1/dns-query?name={urllib.parse.quote(hl)}&type=A", {'Accept': 'application/dns-json', 'User-Agent': 'StreamHub/1.0'}),
+            (f"https://1.0.0.1/dns-query?name={urllib.parse.quote(hl)}&type=A", {'Accept': 'application/dns-json', 'User-Agent': 'StreamHub/1.0'}),
+            (f"https://8.8.8.8/resolve?name={urllib.parse.quote(hl)}&type=A", {'User-Agent': 'StreamHub/1.0'}),
+        ]
+        for u, hdrs in endpoints:
+            try:
+                req = urllib.request.Request(u, headers=hdrs)
+                with urllib.request.urlopen(req, timeout=3.0) as resp:
+                    data = json.loads(resp.read().decode('utf-8', 'ignore'))
+                for ans in (data.get('Answer') or []):
+                    if ans.get('type') == 1:
+                        ip = str(ans.get('data') or '').strip()
+                        if _is_public_ipv4(ip) and ip not in ips:
+                            ips.append(ip)
+                if ips:
+                    break
+            except Exception:
+                continue
+    finally:
+        with _DOH_LOCK:
+            _DOH_INFLIGHT.discard(hl)
+            _DOH_CACHE[hl] = (time.time(), ips if ips else [])
+    return ips
+
+def _smart_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    if not isinstance(host, str) or not host or '.' not in host:
+        return _ORIG_GETADDRINFO(host, port, family, type, proto, flags)
+    hl = host.strip().lower()
+    if hl in ('localhost', '1.1.1.1', '8.8.8.8', '1.0.0.1', '8.8.4.4') or _is_ip_literal(hl):
+        return _ORIG_GETADDRINFO(host, port, family, type, proto, flags)
+    need_doh = any(d in hl for d in _DOH_PRIORITY_DOMAINS) and family in (0, socket.AF_INET)
+    if need_doh:
+        doh_ips = _doh_lookup_ipv4(hl)
+        if doh_ips:
+            out = []
+            for ip in doh_ips:
+                try:
+                    out.extend(_ORIG_GETADDRINFO(ip, port, socket.AF_INET, type, proto, flags))
+                except Exception:
+                    pass
+            if out:
+                return out
+    try:
+        res = _ORIG_GETADDRINFO(host, port, family, type, proto, flags)
+        has_public_v4 = any(r[0] == socket.AF_INET and _is_public_ipv4(r[4][0]) for r in res)
+        if not res or (family in (0, socket.AF_INET) and not has_public_v4 and not hl.endswith('.local')):
+            doh_ips = _doh_lookup_ipv4(hl)
+            if doh_ips:
+                out = []
+                for ip in doh_ips:
+                    out.extend(_ORIG_GETADDRINFO(ip, port, socket.AF_INET, type, proto, flags))
+                if out:
+                    return out
+        # Prefer IPv4 first on dual-stack mobile SIM networks to prevent IPv6 connect stalls
+        if family == 0 and len(res) > 1:
+            res = sorted(res, key=lambda r: 0 if r[0] == socket.AF_INET else 1)
+        return res
+    except Exception:
+        if family in (0, socket.AF_INET):
+            doh_ips = _doh_lookup_ipv4(hl)
+            if doh_ips:
+                out = []
+                for ip in doh_ips:
+                    out.extend(_ORIG_GETADDRINFO(ip, port, socket.AF_INET, type, proto, flags))
+                if out:
+                    return out
+        raise
+
+socket.getaddrinfo = _smart_getaddrinfo
+
 try:
     import qrcode
 except ImportError:
@@ -53,7 +176,7 @@ if sys.platform == 'win32':
     except Exception:
         pass
 
-APP_VERSION = "2.5.9"
+APP_VERSION = "2.6.0"
 DEFAULT_UPDATE_URL = "khushal-jangid/streamhub"
 STREAMHUB_UPDATE_URL = os.environ.get("STREAMHUB_UPDATE_URL", "").strip()
 _ENV_DATA_DIR = os.environ.get("STREAMHUB_DATA_DIR", "").strip()
@@ -2039,20 +2162,35 @@ def _check_post_has_links(item):
         _POST_VALID_CACHE[slug] = (now, has_links)
     return has_links
 
-def _filter_playable_items(items, max_workers=16):
-    """Filters out 404 / dead / no-link posts in parallel so users only see playable movies & series."""
+def _filter_playable_items(items, max_workers=10):
+    """Filters out 404 / dead / no-link posts cleanly, falling back if transient network errors drop all cards."""
     if not items:
         return []
     flags = [True] * len(items)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
+    had_valid = False
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(max_workers, len(items))) as ex:
         fut_map = {ex.submit(_check_post_has_links, it): idx for idx, it in enumerate(items)}
         for fut in concurrent.futures.as_completed(fut_map):
             idx = fut_map[fut]
             try:
-                flags[idx] = bool(fut.result())
+                ok = bool(fut.result())
+                flags[idx] = ok
+                if ok:
+                    had_valid = True
             except Exception:
                 flags[idx] = False
-    return [it for idx, it in enumerate(items) if flags[idx]]
+    filtered = [it for idx, it in enumerate(items) if flags[idx]]
+    if filtered or had_valid:
+        return filtered
+    # If transient mobile carrier block/timeout caused 0/N to verify, return non-404 items rather than blank catalog
+    out = []
+    for it in items:
+        slug = _hdhub_slug_key((it or {}).get('permalink', ''))
+        cached = _POST_VALID_CACHE.get(slug)
+        if cached and cached[1] is False:
+            continue
+        out.append(it)
+    return out or list(items)
 
 def _merge_card_lists(primary, secondary):
     """Merges two movie lists while preserving newest order and deduplicating by post slug."""
@@ -2068,7 +2206,7 @@ def _merge_card_lists(primary, secondary):
     return out
 
 def get_latest_hdhub4u_movies(page=1, category='', filter_links=True, max_items=48):
-    """Fetches paginated movies & web series from HDHub4u + Pingora live index and hides dead/no-link posts."""
+    """Fetches paginated movies & web series from HDHub4u + Pingora live index with 4KHDHub fallback."""
     p = max(1, int(page or 1))
     cat = (category or '').strip()
     if cat not in ALLOWED_HDHUB_CATEGORIES:
@@ -2112,6 +2250,12 @@ def get_latest_hdhub4u_movies(page=1, category='', filter_links=True, max_items=
                 print(f"[HDHub4u Cat Pingora {cat}] error:", e)
         merged = cards
 
+    if not merged and not cat:
+        try:
+            merged = fetch_4khdhub_catalog(page=p) or []
+        except Exception:
+            pass
+
     if max_items and len(merged) > max_items:
         merged = merged[:max_items]
     if filter_links and merged:
@@ -2131,25 +2275,33 @@ def get_home_hub(force_refresh=False):
 
     _discover_live_hdhub4u_base(force=force_refresh)
     specs = [
-        ("latest", "", 48),
-        ("netflix", "netflix", 24),
-        ("prime", "amazon-prime-video", 24),
-        ("hotstar", "jiohotstar", 24),
-        ("hollywood", "hollywood-movies", 24),
-        ("bollywood", "bollywood-movies", 24),
-        ("web_series", "web-series", 24),
-        ("hindi_dubbed", "hindi-dubbed", 24),
-        ("south_hindi", "south-hindi-movies", 24),
+        ("latest", "", 48, True),
+        ("netflix", "netflix", 20, False),
+        ("prime", "amazon-prime-video", 20, False),
+        ("hotstar", "jiohotstar", 20, False),
+        ("hollywood", "hollywood-movies", 20, False),
+        ("bollywood", "bollywood-movies", 20, False),
+        ("web_series", "web-series", 20, False),
+        ("hindi_dubbed", "hindi-dubbed", 20, False),
+        ("south_hindi", "south-hindi-movies", 20, False),
     ]
     out = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
-        fut_map = {ex.submit(get_latest_hdhub4u_movies, 1, cat, True, cap): key for key, cat, cap in specs}
+        fut_map = {ex.submit(get_latest_hdhub4u_movies, 1, cat, flt, cap): key for key, cat, cap, flt in specs}
         for fut in concurrent.futures.as_completed(fut_map):
             k = fut_map[fut]
             try:
                 out[k] = fut.result() or []
             except Exception:
                 out[k] = []
+
+    if not out.get("latest"):
+        try:
+            fb_cards = fetch_4khdhub_catalog(page=1) or []
+            if fb_cards:
+                out["latest"] = fb_cards
+        except Exception:
+            pass
 
     if out.get("latest"):
         with _HOME_HUB_LOCK:
@@ -5216,14 +5368,51 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 }
 .live-dl-banner.show { display: block; animation: toastIn 0.2s ease; }
 
-/* Startup Update Available Modal */
-#startupUpdateModal.modal-overlay.sh-full-page.sh-page-visible {
+/* Startup Update Available Modal & VIP Unlock Modal */
+#startupUpdateModal.modal-overlay.sh-full-page.sh-page-visible,
+#vipUnlockModal.modal-overlay.sh-full-page.sh-page-visible {
     display: flex !important;
     align-items: center;
     justify-content: center;
     min-height: 100vh;
     min-height: 100dvh;
     padding: 20px 16px !important;
+}
+.vip-nav-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 800;
+    cursor: pointer; border: 1px solid rgba(234, 179, 8, 0.45);
+    background: rgba(234, 179, 8, 0.16); color: #fde047;
+    white-space: nowrap; flex-shrink: 0;
+}
+.vip-nav-pill.unlocked {
+    border-color: rgba(34, 197, 94, 0.45);
+    background: rgba(34, 197, 94, 0.15);
+    color: #86efac;
+}
+.vip-card-lock {
+    display: none;
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    z-index: 3; width: 42px; height: 42px; border-radius: 50%;
+    background: rgba(10, 12, 20, 0.86); border: 1.5px solid rgba(234, 179, 8, 0.72);
+    color: #facc15; align-items: center; justify-content: center;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.7); pointer-events: none;
+}
+body.sh-vip-locked .vip-card-lock { display: inline-flex; }
+body.sh-vip-locked .hover-play { display: none !important; }
+body.sh-vip-locked .poster-wrap img,
+body.sh-vip-locked .shelf-poster { filter: brightness(0.76); }
+.vip-key-input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border-strong);
+    color: #fff; border-radius: 10px; padding: 12px 14px; font-size: 0.96rem;
+    font-family: ui-monospace, Consolas, monospace; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase; outline: none; margin-bottom: 10px;
+}
+.vip-key-input:focus { border-color: #eab308; }
+.vip-err-box {
+    display: none; font-size: 0.78rem; color: #fca5a5;
+    background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35);
+    border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; line-height: 1.4;
 }
 .startup-update-card {
     width: 100%; max-width: 400px; text-align: left;
@@ -5583,6 +5772,10 @@ html, body { max-width: 100%; overflow-x: hidden; }
         </div>
 
         <div class="nav-actions">
+            <button type="button" class="vip-nav-pill" id="btnVipNavPill" onclick="openVipUnlockModal()" title="VIP Key Pass Status">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <span id="btnVipNavLabel">VIP Locked</span>
+            </button>
             <button class="smart-pill active" id="btnNavUpdatePill" onclick="openUpdateModal(false)" style="display:none;padding:4px 10px;font-size:0.72rem;" title="New Update Available">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>
                 <span id="btnNavUpdateLabel">Update</span>
@@ -5647,7 +5840,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 <div class="hero-actions">
                     <button class="btn-nf-play" id="btnHeroPlay" onclick="playHeroCurrent()">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"/></svg>
-                        Watch Now
+                        <span id="btnHeroPlayLabel">Watch Now</span>
                     </button>
                     <button class="btn-nf-glass" id="btnHeroFav" onclick="toggleHeroFavorite()">+ My List</button>
                     <button class="btn-nf-glass" id="btnHeroPasteLink" onclick="focusLinkInput()">Paste Link</button>
@@ -6149,6 +6342,19 @@ html, body { max-width: 100%; overflow-x: hidden; }
             </button>
         </div>
         <div class="settings-body">
+            <button type="button" class="settings-menu-item highlight" onclick="closeSettingsModal(); openVipUnlockModal();">
+                <div class="settings-menu-left">
+                    <span class="settings-menu-ico" style="color:#facc15;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                    </span>
+                    <div style="min-width:0;flex:1;">
+                        <div class="settings-menu-title">VIP Access Key</div>
+                        <div class="settings-menu-sub" id="menuSubVip">Locked • Tap to Enter Key</div>
+                    </div>
+                </div>
+                <span class="settings-menu-chev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></span>
+            </button>
+
             <button type="button" class="settings-menu-item" onclick="openSettingsSubPage('profilePageModal')">
                 <div class="settings-menu-left">
                     <span class="settings-menu-ico">
@@ -6674,6 +6880,52 @@ html, body { max-width: 100%; overflow-x: hidden; }
     </div>
 </div>
 
+<!-- VIP Redeem Key / Unlock Modal -->
+<div class="modal-overlay fullscreen-mobile sh-full-page" id="vipUnlockModal" onclick="if(event.target===this) closeVipUnlockModal()" role="dialog" aria-modal="true" aria-labelledby="vipUnlockTitle">
+    <div class="startup-update-card">
+        <div class="startup-update-head">
+            <div style="display:flex;align-items:center;gap:11px;min-width:0;">
+                <span class="startup-update-ico" style="background:rgba(234,179,8,0.16);border-color:rgba(234,179,8,0.45);color:#facc15;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </span>
+                <div style="min-width:0;">
+                    <div style="font-size:0.68rem;font-weight:700;color:#facc15;letter-spacing:0.7px;text-transform:uppercase;">StreamHub VIP Pass</div>
+                    <h2 id="vipUnlockTitle" style="font-size:1rem;font-weight:800;color:#fff;line-height:1.25;">Unlock All Movies &amp; 4K</h2>
+                </div>
+            </div>
+            <button type="button" class="btn-close-card" onclick="closeVipUnlockModal()" aria-label="Close VIP modal">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+
+        <div class="startup-ver-row">
+            <span class="startup-ver-pill" id="vipModalStatePill">Status: Locked</span>
+            <span class="startup-ver-pill" id="vipModalDevicePill">1 Key = 1 Device</span>
+        </div>
+
+        <div id="vipModalDesc" style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px;line-height:1.45;">
+            Movies, Web Series aur Downloads chalane ke liye apna VIP Key code daalein.
+        </div>
+
+        <div id="vipKeyEntryWrap">
+            <input type="text" id="vipKeyInput" class="vip-key-input" placeholder="e.g. SHVIP-5SEC-1234" autocomplete="off" autocapitalize="characters" onkeydown="if(event.key==='Enter') submitVipKey()">
+            <div id="vipModalErr" class="vip-err-box"></div>
+            <div class="startup-update-actions">
+                <button type="button" id="btnVipActivate" class="vlc-banner" style="flex:1 1 180px;min-height:44px;font-size:0.9rem;justify-content:center;" onclick="submitVipKey()">Unlock with Key</button>
+                <button type="button" class="btn-sm btn-copy-sm" style="min-height:44px;padding:0 14px;" onclick="closeVipUnlockModal()">Close</button>
+            </div>
+        </div>
+
+        <div id="vipActiveWrap" style="display:none;">
+            <div id="vipActiveBox" class="startup-update-notes" style="color:#86efac;border-color:rgba(34,197,94,0.34);background:rgba(34,197,94,0.08);"></div>
+            <div class="startup-update-actions">
+                <button type="button" class="btn-sm btn-indigo-sm" style="flex:1 1 140px;min-height:42px;" onclick="refreshVipStatus(true)">Verify Server</button>
+                <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 140px;min-height:42px;color:#fca5a5;border-color:rgba(239,68,68,0.35);" onclick="lockVipForTest()">Lock App (Test)</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Mobile Bottom App Dock (<768px) -->
 <nav class="mobile-dock" aria-label="Mobile quick navigation">
     <div class="mobile-dock-grid">
@@ -6865,11 +7117,12 @@ html, body { max-width: 100%; overflow-x: hidden; }
     }
 
     window.__shAndroidHandleBack = function() {
-        const modals = ['startupUpdateModal', 'downloadPickerModal', 'inlineWebPlayerModal', 'trailerModalOverlay', 'qrModalOverlay', 'remoteModalOverlay', 'hub4kPageModal', 'profilePageModal', 'themePageModal', 'dlSettingsPageModal', 'toolsPageModal', 'updateModalOverlay', 'downloadsModalOverlay', 'settingsModalOverlay'];
+        const modals = ['vipUnlockModal', 'startupUpdateModal', 'downloadPickerModal', 'inlineWebPlayerModal', 'trailerModalOverlay', 'qrModalOverlay', 'remoteModalOverlay', 'hub4kPageModal', 'profilePageModal', 'themePageModal', 'dlSettingsPageModal', 'toolsPageModal', 'updateModalOverlay', 'downloadsModalOverlay', 'settingsModalOverlay'];
         for (const id of modals) {
             const el = document.getElementById(id);
             if (el && el.classList.contains('open')) {
-                if (id === 'startupUpdateModal') closeStartupUpdateModal(true);
+                if (id === 'vipUnlockModal') closeVipUnlockModal();
+                else if (id === 'startupUpdateModal') closeStartupUpdateModal(true);
                 else if (id === 'hub4kPageModal') closeHub4kModal();
                 else if (id === 'downloadPickerModal') closeDownloadPicker();
                 else if (id === 'inlineWebPlayerModal') closeInlinePlayer();
@@ -7166,7 +7419,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 ? `<img class="shelf-poster" src="${esc(item.thumbnail)}" alt="${esc(item.title)}" loading="lazy">`
                 : `<div class="shelf-fallback">S</div>`;
             card.innerHTML = `
-                <div style="position:relative;">${thumb}${rTag}${pBar}</div>
+                <div style="position:relative;">${thumb}<span class="vip-card-lock" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>${rTag}${pBar}</div>
                 <button class="shelf-del" onclick="removeLibraryItem(${idx}, event)" title="Remove">&times;</button>
                 <div class="shelf-info">${esc(cleanHeroTitle(item.title))}</div>
             `;
@@ -7259,6 +7512,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
             const mainTxt = document.getElementById('btnMainVlcText');
             if (mainTxt) mainTxt.textContent = 'Play in Phone VLC App (1-Tap Seekable)';
         }
+        document.body.classList.add('sh-vip-locked');
+        refreshVipStatus(false);
         syncProgressFromServer();
         initSettingsAndDownloads();
         checkAppUpdate(false);
@@ -7439,6 +7694,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 <div class="hover-play" aria-hidden="true">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="7 4 20 12 7 20 7 4"/></svg>
                 </div>
+                <span class="vip-card-lock" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
             </div>
             <div class="movie-card-info">
                 <div class="movie-card-title">${esc(titleTxt)}</div>
@@ -7938,6 +8194,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
     }
 
     function playZipEpisodeDirect(zipIdx) {
+        if (!requireVipAccess(() => playZipEpisodeDirect(zipIdx))) return;
         const ep = activeZipEntries[zipIdx];
         if (!ep) return;
         activeZipIndex = zipIdx;
@@ -7973,6 +8230,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
     }
 
     async function unpackSeriesPackInline(packIdx, silentAuto) {
+        if (!silentAuto && !requireVipAccess(() => unpackSeriesPackInline(packIdx, false))) return;
         const pack = activeSeriesData && (activeSeriesData.packs || [])[packIdx];
         if (!pack || !pack.link) return;
         const list = document.getElementById('episodesList');
@@ -8199,6 +8457,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
 
     function openTitleNetflixStyle(movie) {
         if (!movie) return;
+        if (!requireVipAccess(() => openTitleNetflixStyle(movie))) return;
         if (!movie.permalink && movie.url) {
             if (isAndroidApp()) {
                 saveToHistory(movie);
@@ -8233,6 +8492,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
 
     async function quickOpenMovieDownload(movie, ev) {
         if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+        if (!requireVipAccess(() => quickOpenMovieDownload(movie))) return;
         if (!movie || !movie.permalink) {
             showToast('Download link available nahi hai', 'err');
             return;
@@ -8275,6 +8535,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         const inp = document.getElementById('toolsCustomUrlInput');
         const url = (inp && inp.value || '').trim();
         if (!url) { showToast('Pehle HubCloud, HDHub4u ya .m3u8 link paste karein', 'err'); return; }
+        if (!requireVipAccess(() => playToolsCustomLink())) return;
         closeAllSettingsPages();
         if (isAndroidApp()) {
             launchAndroidDirectStream({
@@ -8290,6 +8551,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
     }
 
     function pickSeriesLink(encodedLink, sIdx, epIdx) {
+        if (!requireVipAccess(() => pickSeriesLink(encodedLink, sIdx, epIdx))) return;
         const link = decodeURIComponent(encodedLink);
         const pKey = (currentMovieMeta && currentMovieMeta.permalink) || '';
         const sTitle = cleanDisplayTitle((activeSeriesData && activeSeriesData.title) || (currentMovieMeta && currentMovieMeta.title) || 'Web Series');
@@ -8696,6 +8958,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
     }
 
     async function resolveLink() {
+        if (!requireVipAccess(() => resolveLink())) return;
         const url = document.getElementById('urlInput').value.trim();
         if (!url) { showToast('Pehle HubCloud, HubDrive ya HDHub4u link paste karein', 'err'); return; }
         const status = document.getElementById('resolveStatus');
@@ -9164,6 +9427,10 @@ html, body { max-width: 100%; overflow-x: hidden; }
             });
             const data = await resp.json();
             if (!data || !data.success || !data.target) {
+                if (data && data.vip_required) {
+                    refreshVipStatus(false);
+                    openVipUnlockModal(false);
+                }
                 showToast('Player Error: ' + ((data && (data.message || data.error)) || 'Stream ready nahi hua'), 'err');
                 return;
             }
@@ -9236,6 +9503,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
     }
 
     async function playInVlcCustom(encodedUrl, track, encodedSeekUrl, baseOff, subSize, cm, sid, forceExternal, startTimeOverride) {
+        if (!requireVipAccess()) return;
         const url = decodeURIComponent(encodedUrl);
         const seekUrl = encodedSeekUrl ? decodeURIComponent(encodedSeekUrl) : "";
         if (!isAndroidApp() && isMobileDevice()) {
@@ -9543,9 +9811,225 @@ html, body { max-width: 100%; overflow-x: hidden; }
     }
 
     const SH_FULL_PAGES = [
-        'startupUpdateModal', 'settingsModalOverlay', 'profilePageModal', 'themePageModal',
+        'vipUnlockModal', 'startupUpdateModal', 'settingsModalOverlay', 'profilePageModal', 'themePageModal',
         'dlSettingsPageModal', 'toolsPageModal', 'updateModalOverlay', 'downloadsModalOverlay', 'hub4kPageModal'
     ];
+
+    let vipState = { active: false, remaining_sec: 0, unlockUntilPerfMs: 0, code: '', label: '', max_devices: 1, device_id: '', reason: '' };
+    let pendingVipAction = null;
+    let vipTickerTimer = null;
+
+    function _fmtVipRem(sec) {
+        const s = Math.max(0, Math.ceil(Number(sec || 0)));
+        if (s < 60) return `${s}s`;
+        if (s < 3600) {
+            const m = Math.floor(s / 60);
+            const r = s % 60;
+            return r ? `${m}m ${r}s` : `${m}m`;
+        }
+        if (s < 86400) {
+            const h = Math.floor(s / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            return m ? `${h}h ${m}m` : `${h}h`;
+        }
+        const d = Math.floor(s / 86400);
+        const h = Math.floor((s % 86400) / 3600);
+        return h ? `${d}d ${h}h` : `${d}d`;
+    }
+
+    function _vipRemainingNow() {
+        if (!vipState.active || !vipState.unlockUntilPerfMs) return 0;
+        return Math.max(0, (vipState.unlockUntilPerfMs - performance.now()) / 1000);
+    }
+
+    function applyVipUiState() {
+        const rem = _vipRemainingNow();
+        const isActive = Boolean(vipState.active && rem > 0);
+        if (!isActive && vipState.active) {
+            vipState.active = false;
+            vipState.remaining_sec = 0;
+            vipState.reason = vipState.reason || 'VIP Key expire ho chuki hai — naya key daalein';
+        }
+        document.body.classList.toggle('sh-vip-locked', !isActive);
+
+        const navPill = document.getElementById('btnVipNavPill');
+        const navLbl = document.getElementById('btnVipNavLabel');
+        if (navPill) navPill.classList.toggle('unlocked', isActive);
+        if (navLbl) navLbl.textContent = isActive ? `VIP ${_fmtVipRem(rem)}` : 'VIP Locked';
+
+        const heroLbl = document.getElementById('btnHeroPlayLabel');
+        if (heroLbl) heroLbl.textContent = isActive ? 'Watch Now' : 'Unlock to Watch';
+
+        const menuSub = document.getElementById('menuSubVip');
+        if (menuSub) menuSub.textContent = isActive ? `Active • ${_fmtVipRem(rem)} left (${vipState.code})` : 'Locked • Tap to Enter Key';
+
+        const stPill = document.getElementById('vipModalStatePill');
+        const devPill = document.getElementById('vipModalDevicePill');
+        const entryWrap = document.getElementById('vipKeyEntryWrap');
+        const activeWrap = document.getElementById('vipActiveWrap');
+        const activeBox = document.getElementById('vipActiveBox');
+        const desc = document.getElementById('vipModalDesc');
+
+        if (stPill) {
+            stPill.textContent = isActive ? `Active • ${_fmtVipRem(rem)} left` : 'Status: Locked';
+            stPill.classList.toggle('new', isActive);
+        }
+        if (devPill) {
+            const did = vipState.device_id ? ` • ${String(vipState.device_id).slice(0, 8)}` : '';
+            devPill.textContent = `1 Key = ${vipState.max_devices || 1} Device${did}`;
+        }
+        if (entryWrap) entryWrap.style.display = isActive ? 'none' : 'block';
+        if (activeWrap) activeWrap.style.display = isActive ? 'block' : 'none';
+        if (desc) {
+            desc.textContent = isActive
+                ? 'Aapka VIP Pass active hai — sabhi movies, web series aur downloads unlocked hain.'
+                : (vipState.reason || 'Movies, Web Series aur Downloads chalane ke liye apna VIP Key code daalein.');
+        }
+        if (activeBox && isActive) {
+            activeBox.textContent = `Key: ${vipState.code}\nPlan: ${vipState.label || 'VIP Pass'}\nTime Left: ${_fmtVipRem(rem)}\nDevice Lock: ${(vipState.device_id || '').slice(0, 12)} (1/${vipState.max_devices || 1})`;
+        }
+    }
+
+    function _restartVipTicker() {
+        if (vipTickerTimer) { clearInterval(vipTickerTimer); vipTickerTimer = null; }
+        if (!vipState.active) return;
+        const rem0 = _vipRemainingNow();
+        const stepMs = rem0 <= 120 ? 250 : 2000;
+        vipTickerTimer = setInterval(() => {
+            const rem = _vipRemainingNow();
+            if (rem <= 0) {
+                clearInterval(vipTickerTimer);
+                vipTickerTimer = null;
+                vipState.active = false;
+                vipState.remaining_sec = 0;
+                vipState.reason = 'VIP Key ka time khatam ho gaya — naya key daalein';
+                applyVipUiState();
+                try {
+                    const iw = document.getElementById('inlineWebPlayerModal');
+                    if (iw && iw.classList.contains('open')) closeInlinePlayer();
+                } catch (e) {}
+                showToast('VIP Time Khatam! Naya Key Daalein', 'err');
+                fetch('/api/vip/status').catch(() => {});
+                return;
+            }
+            applyVipUiState();
+            if (stepMs > 500 && rem <= 120) _restartVipTicker();
+        }, stepMs);
+    }
+
+    function _syncVipPayload(d) {
+        if (!d || typeof d !== 'object') return;
+        const wasActive = vipState.active;
+        const rem = Math.max(0, Number(d.remaining_sec || 0));
+        vipState.active = Boolean(d.active && rem > 0);
+        vipState.remaining_sec = rem;
+        vipState.unlockUntilPerfMs = vipState.active ? (performance.now() + rem * 1000) : 0;
+        vipState.code = String(d.code || '');
+        vipState.label = String(d.label || '');
+        vipState.max_devices = Number(d.max_devices || 1);
+        vipState.device_id = String(d.device_id || '');
+        vipState.reason = String(d.reason || '');
+        applyVipUiState();
+        _restartVipTicker();
+        if (wasActive && !vipState.active) {
+            showToast(vipState.reason || 'VIP Key expire ho chuki hai', 'err');
+        }
+    }
+
+    async function refreshVipStatus(forceRemote) {
+        try {
+            const resp = await fetch('/api/vip/status' + (forceRemote ? '?refresh=1' : ''));
+            const d = await resp.json();
+            _syncVipPayload(d);
+            return d;
+        } catch (e) {
+            applyVipUiState();
+            return null;
+        }
+    }
+
+    window.openVipUnlockModal = function(fromPlayer) {
+        dismissIntro();
+        const errBox = document.getElementById('vipModalErr');
+        if (errBox) { errBox.style.display = 'none'; errBox.textContent = ''; }
+        applyVipUiState();
+        const ov = document.getElementById('vipUnlockModal');
+        if (ov) ov.classList.add('open');
+        _syncFullPageView();
+        refreshVipStatus(Boolean(fromPlayer));
+        if (!vipState.active) {
+            setTimeout(() => {
+                const inp = document.getElementById('vipKeyInput');
+                if (inp) inp.focus();
+            }, 90);
+        }
+    };
+
+    function closeVipUnlockModal() {
+        pendingVipAction = null;
+        const ov = document.getElementById('vipUnlockModal');
+        if (ov) ov.classList.remove('open');
+        _syncFullPageView();
+    }
+
+    async function submitVipKey() {
+        const inp = document.getElementById('vipKeyInput');
+        const errBox = document.getElementById('vipModalErr');
+        const btn = document.getElementById('btnVipActivate');
+        const raw = (inp ? inp.value : '').trim();
+        if (!raw) {
+            if (errBox) { errBox.textContent = 'Pehle VIP Key code likhein'; errBox.style.display = 'block'; }
+            return;
+        }
+        if (errBox) errBox.style.display = 'none';
+        if (btn) { btn.disabled = true; btn.textContent = 'Checking Key...'; }
+        try {
+            const resp = await fetch('/api/vip/activate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key: raw })
+            });
+            const d = await resp.json();
+            if (btn) { btn.disabled = false; btn.textContent = 'Unlock with Key'; }
+            if (!d || !d.success || !d.active) {
+                if (errBox) {
+                    errBox.textContent = (d && (d.error || d.message)) || 'Invalid ya Expired VIP Key';
+                    errBox.style.display = 'block';
+                }
+                return;
+            }
+            if (inp) inp.value = '';
+            _syncVipPayload(d);
+            const cb = pendingVipAction;
+            pendingVipAction = null;
+            const ov = document.getElementById('vipUnlockModal');
+            if (ov) ov.classList.remove('open');
+            _syncFullPageView();
+            showToast(d.message || 'VIP Unlocked!', 'ok');
+            if (typeof cb === 'function') setTimeout(() => cb(), 120);
+        } catch (e) {
+            if (btn) { btn.disabled = false; btn.textContent = 'Unlock with Key'; }
+            if (errBox) { errBox.textContent = 'Network error: ' + e.message; errBox.style.display = 'block'; }
+        }
+    }
+
+    async function lockVipForTest() {
+        try {
+            const resp = await fetch('/api/vip/deactivate', { method: 'POST' });
+            const d = await resp.json();
+            _syncVipPayload(d);
+            showToast('App wapas Lock kar di gayi hai (Test Mode)');
+        } catch (e) {}
+    }
+
+    function requireVipAccess(onUnlocked) {
+        if (vipState.active && _vipRemainingNow() > 0) return true;
+        vipState.active = false;
+        applyVipUiState();
+        pendingVipAction = (typeof onUnlocked === 'function') ? onUnlocked : null;
+        window.openVipUnlockModal(false);
+        return false;
+    }
     let hub4kItems = [];
     let hub4kPage = 1;
     let hub4kCategory = '';
@@ -9903,6 +10387,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
     }
 
     function openDownloadPicker(cfg) {
+        if (!requireVipAccess(() => openDownloadPicker(cfg))) return;
         const options = (cfg && cfg.options && cfg.options.length) ? cfg.options : [];
         if (!options.length) {
             showToast('Download karne ke liye koi direct link nahi mila', 'err');
@@ -10377,6 +10862,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
     }
 
     async function playOfflineDownload(dlId) {
+        if (!requireVipAccess(() => playOfflineDownload(dlId))) return;
         const item = offlineDownloadsList.find(x => x.id === dlId);
         if (!item) return;
         const p = (item.media_key && progressMap[item.media_key]) ? progressMap[item.media_key] : null;
@@ -11222,6 +11708,9 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
                 pass
 
     def _stream_offline_file(self, qp):
+        ok_vip, vip_err = _require_vip_or_error()
+        if not ok_vip:
+            self._json(vip_err, status=403); return
         dl_id = (qp.get('id') or [''])[0].strip()
         if not dl_id:
             self.send_response(400); self.end_headers(); return
@@ -11614,6 +12103,11 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
 
         if path == '/api/network_speed':
             self._json(get_network_speed_payload())
+            return
+
+        if path == '/api/vip/status':
+            force_chk = qp.get('refresh', ['0'])[0] in ('1', 'true', 'yes')
+            self._json(get_vip_status(verify_remote=force_chk))
             return
 
         if path == '/api/check_update':
@@ -12048,11 +12542,30 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
 
         # Resolve API
         if self.path == '/api/resolve':
+            ok_vip, vip_err = _require_vip_or_error()
+            if not ok_vip:
+                self._json(vip_err, status=403); return
             try:
                 body = json.loads(raw_body.decode('utf-8'))
                 target_url = body.get('url', '')
                 res = resolve_hubcloud(target_url)
                 self._json(res)
+            except Exception as e:
+                self._json({"success": False, "error": str(e)}, status=500)
+            return
+
+        if self.path == '/api/vip/activate':
+            try:
+                body = json.loads(raw_body.decode('utf-8')) if raw_body else {}
+                res = activate_vip_key(body.get('key', ''))
+                self._json(res, status=200 if res.get('success') else 400)
+            except Exception as e:
+                self._json({"success": False, "error": str(e)}, status=500)
+            return
+
+        if self.path == '/api/vip/deactivate':
+            try:
+                self._json(deactivate_vip_session())
             except Exception as e:
                 self._json({"success": False, "error": str(e)}, status=500)
             return
@@ -12105,6 +12618,9 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
 
         # Auto-Next Episode Trigger from In-Built Player
         if self.path == '/api/play_next_episode':
+            ok_vip, vip_err = _require_vip_or_error()
+            if not ok_vip:
+                self._json(vip_err, status=403); return
             try:
                 body = json.loads(raw_body.decode('utf-8'))
                 srv_port = getattr(self.server, 'server_address', (None, PORT))[1] or PORT
@@ -12223,7 +12739,7 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
                 srv_port = getattr(self.server, 'server_address', (None, PORT))[1] or PORT
                 cfg, err = _prepare_play_target(body, srv_port=srv_port)
                 if err:
-                    self._json(err, status=400)
+                    self._json(err, status=403 if err.get('vip_required') else 400)
                 else:
                     self._json({"success": True, **cfg})
             except Exception as e:
@@ -12682,6 +13198,9 @@ def _prewarm_episode_async(hdhub_link):
     threading.Thread(target=_bg, daemon=True).start()
 
 def _prepare_play_target(body, srv_port=None):
+    ok_vip, vip_err = _require_vip_or_error()
+    if not ok_vip:
+        return None, vip_err
     offline_id = str(body.get('offline_id', '') or '').strip()
     is_offline_local = False
     offline_entry = None
@@ -13151,6 +13670,458 @@ def _parse_size_to_bytes(size_str):
     unit = m.group(2).upper()
     mult = {"KB": 1024, "MB": 1024**2, "GB": 1024**3, "TB": 1024**4}.get(unit, 1)
     return int(val * mult)
+
+# ── Firebase VIP Redeem Key Engine (streamhub-vip Firestore + Anonymous Auth) ────
+FIREBASE_PROJECT_ID = "streamhub-vip"
+FIREBASE_API_KEY = "AIzaSyCy53BV5obtOcXykp5d5tFv9A8vvAalaaM"
+FIREBASE_FIRESTORE_BASE = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents"
+
+_VIP_LOCK = threading.Lock()
+_VIP_RUNTIME = {
+    "loaded": False,
+    "active": False,
+    "code": "",
+    "label": "",
+    "duration_seconds": 0,
+    "max_devices": 1,
+    "device_id": "",
+    "activated_epoch": 0.0,
+    "expires_epoch": 0.0,
+    "unlock_until_mono": 0.0,
+    "last_remote_check_mono": 0.0,
+    "last_reason": "VIP Key daal kar app unlock karein",
+}
+
+def _parse_rfc3339_utc(ts_str):
+    from datetime import datetime, timezone
+    s = str(ts_str or "").strip()
+    if not s:
+        return 0.0
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    m = re.match(r'^(.+\.\d{6})\d+([+-].+)$', s)
+    if m:
+        s = m.group(1) + m.group(2)
+    try:
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+    except Exception:
+        return 0.0
+
+def _parse_http_date_utc(headers_obj):
+    import email.utils
+    from datetime import timezone
+    try:
+        d = headers_obj.get("Date") if headers_obj else ""
+        if d:
+            dt = email.utils.parsedate_to_datetime(d)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.timestamp()
+    except Exception:
+        pass
+    return time.time()
+
+def _get_vip_device_id():
+    env_id = str(os.environ.get("STREAMHUB_DEVICE_ID", "") or "").strip()
+    if env_id:
+        return env_id[:32]
+    cfg = _load_app_config()
+    saved = str(cfg.get("vip_device_id", "") or "").strip()
+    if saved:
+        return saved[:32]
+    gen = "dev_" + hashlib.sha256(f"{uuid.getnode()}:{uuid.uuid4().hex}".encode("utf-8")).hexdigest()[:20]
+    _save_app_config({"vip_device_id": gen})
+    return gen
+
+def _firebase_ensure_token(force_refresh=False):
+    cfg = _load_app_config()
+    auth = cfg.get("vip_auth") if isinstance(cfg.get("vip_auth"), dict) else {}
+    now = time.time()
+    id_tok = str(auth.get("id_token", "") or "").strip()
+    ref_tok = str(auth.get("refresh_token", "") or "").strip()
+    uid = str(auth.get("uid", "") or "").strip()
+    exp_at = float(auth.get("expires_at", 0) or 0)
+
+    if not force_refresh and id_tok and (exp_at - now) > 90:
+        return id_tok, uid, ""
+
+    if ref_tok:
+        try:
+            body_bytes = urllib.parse.urlencode({
+                "grant_type": "refresh_token",
+                "refresh_token": ref_tok,
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                f"https://securetoken.googleapis.com/v1/token?key={FIREBASE_API_KEY}",
+                data=body_bytes,
+                headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "StreamHub/2.6"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=8) as r:
+                d = json.loads(r.read().decode("utf-8", "ignore"))
+            new_tok = str(d.get("id_token", "") or "").strip()
+            new_ref = str(d.get("refresh_token", ref_tok) or ref_tok).strip()
+            new_uid = str(d.get("user_id", uid) or uid).strip()
+            ttl = max(300, int(d.get("expires_in", 3600) or 3600))
+            if new_tok:
+                _save_app_config({"vip_auth": {"id_token": new_tok, "refresh_token": new_ref, "uid": new_uid, "expires_at": time.time() + ttl}})
+                return new_tok, new_uid, ""
+        except Exception:
+            pass
+
+    try:
+        payload = json.dumps({"returnSecureToken": True}).encode("utf-8")
+        req = urllib.request.Request(
+            f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_API_KEY}",
+            data=payload,
+            headers={"Content-Type": "application/json", "User-Agent": "StreamHub/2.6"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=8) as r:
+            d = json.loads(r.read().decode("utf-8", "ignore"))
+        new_tok = str(d.get("idToken", "") or "").strip()
+        new_ref = str(d.get("refreshToken", "") or "").strip()
+        new_uid = str(d.get("localId", "") or "").strip()
+        ttl = max(300, int(d.get("expiresIn", 3600) or 3600))
+        if not new_tok:
+            return "", "", "Firebase Anonymous Auth token nahi mila"
+        _save_app_config({"vip_auth": {"id_token": new_tok, "refresh_token": new_ref, "uid": new_uid, "expires_at": time.time() + ttl}})
+        return new_tok, new_uid, ""
+    except Exception as e:
+        return "", "", f"Firebase connection failed: {e}"
+
+def _firestore_request(method, url, payload=None, id_token=None):
+    hdrs = {"Accept": "application/json", "User-Agent": "StreamHub/2.6"}
+    if id_tok := str(id_token or "").strip():
+        hdrs["Authorization"] = f"Bearer {id_tok}"
+    data = None
+    if payload is not None:
+        hdrs["Content-Type"] = "application/json; charset=utf-8"
+        data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers=hdrs, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            srv_now = _parse_http_date_utc(r.headers)
+            raw = r.read().decode("utf-8", "ignore")
+            return r.status, (json.loads(raw) if raw.strip() else {}), srv_now
+    except urllib.error.HTTPError as he:
+        srv_now = _parse_http_date_utc(he.headers)
+        raw = ""
+        try:
+            raw = he.read().decode("utf-8", "ignore")
+        except Exception:
+            pass
+        try:
+            err_json = json.loads(raw) if raw.strip() else {}
+        except Exception:
+            err_json = {"error": {"message": raw or str(he)}}
+        return he.code, err_json, srv_now
+
+def _fs_decode_vip_doc(doc):
+    flds = (doc or {}).get("fields") or {}
+    def _val(v):
+        if not isinstance(v, dict):
+            return None
+        if "stringValue" in v:
+            return str(v["stringValue"])
+        if "integerValue" in v:
+            return int(v["integerValue"])
+        if "doubleValue" in v:
+            return float(v["doubleValue"])
+        if "booleanValue" in v:
+            return bool(v["booleanValue"])
+        if "timestampValue" in v:
+            return str(v["timestampValue"])
+        if "nullValue" in v:
+            return None
+        if "arrayValue" in v:
+            vals = (v.get("arrayValue") or {}).get("values") or []
+            return [_val(x) for x in vals]
+        return None
+    dev_ids = _val(flds.get("device_ids")) or []
+    act_raw = _val(flds.get("activated_at"))
+    return {
+        "name": str((doc or {}).get("name") or ""),
+        "update_time": str((doc or {}).get("updateTime") or ""),
+        "code": str(_val(flds.get("code")) or ""),
+        "duration_seconds": int(_val(flds.get("duration_seconds")) or 0),
+        "max_devices": int(_val(flds.get("max_devices")) or 1),
+        "revoked": bool(_val(flds.get("revoked"))),
+        "device_ids": [str(x) for x in dev_ids if isinstance(x, str) and x],
+        "activated_at_iso": str(act_raw or ""),
+        "activated_epoch": _parse_rfc3339_utc(act_raw) if act_raw else 0.0,
+        "label": str(_val(flds.get("label")) or ""),
+    }
+
+def _vip_persist_session(code="", label="", duration_seconds=0, max_devices=1, device_id="", activated_epoch=0.0, expires_epoch=0.0, remaining_sec=0.0, reason=""):
+    mono_now = time.monotonic()
+    wall_now = time.time()
+    active = bool(code and remaining_sec > 0.05)
+    with _VIP_LOCK:
+        _VIP_RUNTIME.update({
+            "loaded": True,
+            "active": active,
+            "code": code if active else "",
+            "label": label if active else "",
+            "duration_seconds": int(duration_seconds or 0),
+            "max_devices": int(max_devices or 1),
+            "device_id": device_id or _get_vip_device_id(),
+            "activated_epoch": float(activated_epoch or 0.0),
+            "expires_epoch": float(expires_epoch or 0.0),
+            "unlock_until_mono": (mono_now + remaining_sec) if active else 0.0,
+            "last_remote_check_mono": mono_now,
+            "last_reason": reason or ("VIP Active" if active else "VIP Key daal kar app unlock karein"),
+        })
+    if active:
+        _save_app_config({
+            "vip_session": {
+                "code": code,
+                "label": label,
+                "duration_seconds": int(duration_seconds or 0),
+                "max_devices": int(max_devices or 1),
+                "device_id": device_id,
+                "activated_epoch": float(activated_epoch or 0.0),
+                "expires_epoch": float(expires_epoch or 0.0),
+                "expires_wall_est": wall_now + remaining_sec,
+            }
+        })
+    else:
+        _save_app_config({"vip_session": None})
+
+def _vip_load_persisted_once():
+    with _VIP_LOCK:
+        if _VIP_RUNTIME["loaded"]:
+            return
+        _VIP_RUNTIME["loaded"] = True
+        _VIP_RUNTIME["device_id"] = _get_vip_device_id()
+    cfg = _load_app_config()
+    sess = cfg.get("vip_session")
+    if not isinstance(sess, dict) or not sess.get("code"):
+        return
+    rem = float(sess.get("expires_wall_est", 0) or 0) - time.time()
+    if rem > 0.2:
+        with _VIP_LOCK:
+            _VIP_RUNTIME.update({
+                "active": True,
+                "code": str(sess.get("code") or ""),
+                "label": str(sess.get("label") or ""),
+                "duration_seconds": int(sess.get("duration_seconds") or 0),
+                "max_devices": int(sess.get("max_devices") or 1),
+                "device_id": str(sess.get("device_id") or _get_vip_device_id()),
+                "activated_epoch": float(sess.get("activated_epoch") or 0.0),
+                "expires_epoch": float(sess.get("expires_epoch") or 0.0),
+                "unlock_until_mono": time.monotonic() + rem,
+                "last_remote_check_mono": 0.0,
+                "last_reason": "VIP Active",
+            })
+        threading.Thread(target=_vip_verify_remote_sync, daemon=True).start()
+    else:
+        _vip_persist_session(reason="VIP Key expire ho chuki hai — naya key daalein")
+
+def _vip_verify_remote_sync():
+    with _VIP_LOCK:
+        code = _VIP_RUNTIME.get("code", "")
+        if not code:
+            return
+        dev_id = _VIP_RUNTIME.get("device_id") or _get_vip_device_id()
+    id_tok, _, auth_err = _firebase_ensure_token()
+    if not id_tok:
+        return
+    url = f"{FIREBASE_FIRESTORE_BASE}/vip_keys/{urllib.parse.quote(code, safe='')}"
+    status, data, srv_now = _firestore_request("GET", url, id_token=id_tok)
+    if status == 401:
+        id_tok, _, _ = _firebase_ensure_token(force_refresh=True)
+        if id_tok:
+            status, data, srv_now = _firestore_request("GET", url, id_token=id_tok)
+    if status == 404:
+        _vip_persist_session(reason="Ye VIP Key remove kar di gayi hai")
+        return
+    if status != 200 or not isinstance(data, dict) or not data.get("fields"):
+        return
+    parsed = _fs_decode_vip_doc(data)
+    if parsed["revoked"]:
+        _vip_persist_session(reason="Ye VIP Key Admin dwara block kar di gayi hai")
+        return
+    if dev_id not in parsed["device_ids"]:
+        _vip_persist_session(reason="Device lock reset/change ho gaya hai — dobara key daalein")
+        return
+    if parsed["activated_epoch"] > 0 and parsed["duration_seconds"] > 0:
+        exp_ep = parsed["activated_epoch"] + parsed["duration_seconds"]
+        rem = exp_ep - srv_now
+        if rem <= 0:
+            _vip_persist_session(reason="VIP Key expire ho chuki hai — naya key daalein")
+        else:
+            _vip_persist_session(
+                code=code, label=parsed["label"],
+                duration_seconds=parsed["duration_seconds"], max_devices=parsed["max_devices"],
+                device_id=dev_id, activated_epoch=parsed["activated_epoch"],
+                expires_epoch=exp_ep, remaining_sec=rem, reason="VIP Active",
+            )
+
+def activate_vip_key(raw_key):
+    code = re.sub(r'[^A-Z0-9_-]', '', str(raw_key or '').strip().upper())
+    if len(code) < 6 or len(code) > 40:
+        return {"success": False, "error": "VIP Key 6 se 40 characters ke beech hona chahiye"}
+    dev_id = _get_vip_device_id()
+    id_tok, _, auth_err = _firebase_ensure_token()
+    if not id_tok:
+        return {"success": False, "error": auth_err or "Firebase login error — internet check karein"}
+
+    doc_path = f"projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents/vip_keys/{urllib.parse.quote(code, safe='')}"
+    get_url = f"{FIREBASE_FIRESTORE_BASE}/vip_keys/{urllib.parse.quote(code, safe='')}"
+    status, data, srv_now = _firestore_request("GET", get_url, id_token=id_tok)
+    if status == 401:
+        id_tok, _, _ = _firebase_ensure_token(force_refresh=True)
+        if id_tok:
+            status, data, srv_now = _firestore_request("GET", get_url, id_token=id_tok)
+
+    if status == 404:
+        return {"success": False, "error": "Galat VIP Key — yeh code database me nahi mila"}
+    if status != 200 or not isinstance(data, dict) or not data.get("fields"):
+        err_msg = ((data or {}).get("error") or {}).get("message") or f"Firestore HTTP {status}"
+        return {"success": False, "error": f"Key check fail hua: {err_msg}"}
+
+    parsed = _fs_decode_vip_doc(data)
+    if parsed["revoked"]:
+        _vip_persist_session(reason="Ye VIP Key block kar di gayi hai")
+        return {"success": False, "error": "Ye VIP Key Admin dwara block/revoke kar di gayi hai"}
+    dur = parsed["duration_seconds"]
+    if dur <= 0:
+        return {"success": False, "error": "Invalid VIP key duration"}
+    max_dev = max(1, parsed["max_devices"])
+    devs = list(parsed["device_ids"])
+
+    if parsed["activated_epoch"] > 0:
+        exp_ep = parsed["activated_epoch"] + dur
+        rem = exp_ep - srv_now
+        if rem <= 0:
+            _vip_persist_session(reason="Ye VIP Key expire ho chuki hai")
+            return {"success": False, "expired": True, "error": "Ye VIP Key expire ho chuki hai — naya code daalein"}
+        if dev_id not in devs:
+            if len(devs) >= max_dev:
+                return {"success": False, "error": f"Device Limit Full ({len(devs)}/{max_dev})! Ye key kisi aur phone par lock hai."}
+            devs.append(dev_id)
+            commit_body = {
+                "writes": [{
+                    "update": {
+                        "name": doc_path,
+                        "fields": {
+                            "activated_at": {"timestampValue": parsed["activated_at_iso"]},
+                            "device_ids": {"arrayValue": {"values": [{"stringValue": d} for d in devs]}},
+                        },
+                    },
+                    "updateMask": {"fieldPaths": ["activated_at", "device_ids"]},
+                    "currentDocument": {"updateTime": parsed["update_time"]},
+                }]
+            }
+            c_st, c_res, c_srv_now = _firestore_request("POST", f"{FIREBASE_FIRESTORE_BASE}:commit", payload=commit_body, id_token=id_tok)
+            if c_st != 200:
+                c_msg = ((c_res or {}).get("error") or {}).get("message") or f"HTTP {c_st}"
+                return {"success": False, "error": f"Device lock nahi ho paya: {c_msg}"}
+            srv_now = c_srv_now or srv_now
+            rem = max(0.0, exp_ep - srv_now)
+        act_ep = parsed["activated_epoch"]
+    else:
+        if len(devs) >= max_dev and dev_id not in devs:
+            return {"success": False, "error": "Device Limit Full! Ye key already kisi aur device par active hai."}
+        if dev_id not in devs:
+            devs.append(dev_id)
+        commit_body = {
+            "writes": [{
+                "update": {
+                    "name": doc_path,
+                    "fields": {
+                        "activated_at": {"timestampValue": "1970-01-01T00:00:00Z"},
+                        "device_ids": {"arrayValue": {"values": [{"stringValue": d} for d in devs]}},
+                    },
+                },
+                "updateMask": {"fieldPaths": ["activated_at", "device_ids"]},
+                "currentDocument": {"updateTime": parsed["update_time"]},
+                "updateTransforms": [
+                    {"fieldPath": "activated_at", "setToServerValue": "REQUEST_TIME"}
+                ],
+            }]
+        }
+        c_st, c_res, c_srv_now = _firestore_request("POST", f"{FIREBASE_FIRESTORE_BASE}:commit", payload=commit_body, id_token=id_tok)
+        if c_st != 200:
+            c_msg = ((c_res or {}).get("error") or {}).get("message") or f"HTTP {c_st}"
+            return {"success": False, "error": f"Key activate nahi hui: {c_msg}"}
+        wr = ((c_res or {}).get("writeResults") or [{}])[0]
+        commit_ts_iso = wr.get("updateTime") or c_res.get("commitTime") or ""
+        act_ep = _parse_rfc3339_utc(commit_ts_iso) or c_srv_now
+        srv_now = max(act_ep, c_srv_now or act_ep)
+        exp_ep = act_ep + dur
+        rem = max(0.0, dur - max(0.0, srv_now - act_ep))
+
+    if rem <= 0.05:
+        _vip_persist_session(reason="VIP Key activate hote hi expire ho gayi")
+        return {"success": False, "expired": True, "error": "Ye key abhi expire ho chuki hai"}
+
+    _vip_persist_session(
+        code=code, label=parsed["label"] or (f"{dur}s Test" if dur < 120 else "VIP Pass"),
+        duration_seconds=dur, max_devices=max_dev, device_id=dev_id,
+        activated_epoch=act_ep, expires_epoch=exp_ep, remaining_sec=rem,
+        reason="VIP Unlocked!",
+    )
+    st = get_vip_status(verify_remote=False)
+    st["message"] = f"VIP Unlocked! ({st.get('label') or code})"
+    return st
+
+def deactivate_vip_session():
+    _vip_persist_session(reason="VIP Key lock kar diya gaya")
+    return get_vip_status(verify_remote=False)
+
+def get_vip_status(verify_remote=False):
+    _vip_load_persisted_once()
+    if verify_remote:
+        _vip_verify_remote_sync()
+    mono_now = time.monotonic()
+    need_bg_sync = False
+    with _VIP_LOCK:
+        act = bool(_VIP_RUNTIME["active"])
+        rem = max(0.0, _VIP_RUNTIME["unlock_until_mono"] - mono_now) if act else 0.0
+        if act and rem <= 0.0:
+            _VIP_RUNTIME["active"] = False
+            _VIP_RUNTIME["code"] = ""
+            _VIP_RUNTIME["unlock_until_mono"] = 0.0
+            _VIP_RUNTIME["last_reason"] = "VIP Key ka time khatam ho gaya — naya key daalein"
+            act = False
+            need_bg_sync = False
+            should_clear_disk = True
+        else:
+            should_clear_disk = False
+            if act and (mono_now - _VIP_RUNTIME["last_remote_check_mono"]) > 20.0:
+                _VIP_RUNTIME["last_remote_check_mono"] = mono_now
+                need_bg_sync = True
+        res = {
+            "success": True,
+            "active": act,
+            "remaining_sec": round(rem, 2),
+            "code": _VIP_RUNTIME["code"] if act else "",
+            "label": _VIP_RUNTIME["label"] if act else "",
+            "duration_seconds": _VIP_RUNTIME["duration_seconds"],
+            "max_devices": _VIP_RUNTIME["max_devices"],
+            "device_id": _VIP_RUNTIME["device_id"] or _get_vip_device_id(),
+            "reason": _VIP_RUNTIME["last_reason"],
+        }
+    if should_clear_disk:
+        _save_app_config({"vip_session": None})
+    if need_bg_sync:
+        threading.Thread(target=_vip_verify_remote_sync, daemon=True).start()
+    return res
+
+def is_vip_active():
+    return bool(get_vip_status(verify_remote=False).get("active"))
+
+def _require_vip_or_error():
+    st = get_vip_status(verify_remote=False)
+    if st.get("active"):
+        return True, None
+    msg = st.get("reason") or "VIP Key required — movie chalane ke liye key daalein"
+    return False, {"success": False, "vip_required": True, "error": msg, "message": msg}
 
 def get_user_settings():
     cfg = _load_app_config()
@@ -13975,6 +14946,9 @@ def list_offline_downloads():
     }
 
 def start_offline_download(body):
+    ok_vip, vip_err = _require_vip_or_error()
+    if not ok_vip:
+        return vip_err
     if not isinstance(body, dict):
         return {"success": False, "error": "Invalid download request"}
     _ensure_offline_dir()
