@@ -1,0 +1,1243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#000000">
+  <title>StreamHub · Direct 4K Cinema App for Android and Windows</title>
+  <meta name="description" content="Stream and save 4K cinema and web series on Android APK and Windows PC with ten connection downloads, background notifications, and private local storage.">
+  <meta property="og:title" content="StreamHub · Direct 4K Cinema App for Android and Windows">
+  <meta property="og:description" content="Download the native Android APK and Windows installer directly from official GitHub releases with verified SHA256 checksums.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://khushal-jangid.github.io/streamhub/">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-canvas: #000000;
+      --bg-surface: #181818;
+      --bg-surface-2: #1F1F1F;
+      --bg-control: #272727;
+      --border: #313131;
+      --accent: #e50914;
+      --accent-hover: #c20710;
+      --text-primary: #ffffff;
+      --text-muted: #a3a3a3;
+      --text-dim: rgba(255, 255, 255, 0.28);
+      --green: #22c55e;
+      --curve: cubic-bezier(0.22, 1, 0.36, 1);
+
+      --sp-0: 0px;
+      --sp-25: 2px;
+      --sp-50: 4px;
+      --sp-75: 8px;
+      --sp-100: 12px;
+      --sp-200: 16px;
+      --sp-300: 24px;
+      --sp-400: 32px;
+      --sp-500: 40px;
+      --sp-600: 48px;
+      --sp-700: 64px;
+      --sp-800: 80px;
+      --sp-900: 96px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; background: var(--bg-canvas); color: var(--text-primary); }
+    body {
+      font-family: 'Geist', sans-serif;
+      background: var(--bg-canvas);
+      color: var(--text-primary);
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, a { font-family: inherit; }
+    a:focus-visible, button:focus-visible, summary:focus-visible {
+      outline: 2px solid #ffffff;
+      outline-offset: 2px;
+    }
+
+    /* Skip Link */
+    .skip-link {
+      position: fixed;
+      top: -64px;
+      left: var(--sp-200);
+      z-index: 120;
+      padding: var(--sp-75) var(--sp-100);
+      background: var(--bg-control);
+      border: 1px solid var(--border);
+      border-radius: var(--sp-75);
+      color: var(--text-primary);
+      text-decoration: none;
+      transition: transform 300ms var(--curve), opacity 300ms var(--curve);
+    }
+    .skip-link:focus { transform: translateY(80px); }
+
+    /* B1 Named Typography Styles (strict Tailwind scale steps) */
+    .heading-1 { font-size: 3.75rem; line-height: 1; font-weight: 600; letter-spacing: -0.03em; text-wrap: balance; }
+    .heading-2 { font-size: 3rem; line-height: 1; font-weight: 600; letter-spacing: -0.025em; text-wrap: balance; }
+    .heading-3 { font-size: 2.25rem; line-height: 40px; font-weight: 600; letter-spacing: -0.02em; text-wrap: balance; }
+    .heading-4 { font-size: 1.875rem; line-height: 36px; font-weight: 600; letter-spacing: -0.015em; text-wrap: balance; }
+    .heading-5 { font-size: 1.5rem; line-height: 32px; font-weight: 600; letter-spacing: -0.01em; }
+    .title-2 { font-size: 1.125rem; line-height: 28px; font-weight: 500; }
+    .title-3 { font-size: 1rem; line-height: 24px; font-weight: 500; }
+    .title-4 { font-size: 0.875rem; line-height: 20px; font-weight: 500; }
+    .body-3 { font-size: 1rem; line-height: 24px; font-weight: 400; text-wrap: pretty; }
+    .body-6 { font-size: 0.875rem; line-height: 20px; font-weight: 400; text-wrap: pretty; }
+    .button-md { font-size: 1rem; line-height: 24px; font-weight: 600; }
+    .button-sm { font-size: 0.875rem; line-height: 20px; font-weight: 600; }
+    .caption-2 { font-size: 0.875rem; line-height: 20px; font-weight: 400; }
+    .caption-4 { font-size: 0.75rem; line-height: 16px; font-weight: 500; }
+    .caption-5 { font-size: 0.75rem; line-height: 16px; font-weight: 400; }
+    .mono { font-family: 'Geist Mono', monospace; }
+
+    /* Compact Floating Top Navigation */
+    .nav-shell {
+      position: fixed;
+      top: var(--sp-200);
+      left: 0;
+      right: 0;
+      z-index: 90;
+      display: flex;
+      justify-content: center;
+      padding: 0 var(--sp-200);
+      pointer-events: none;
+    }
+    .nav-pill {
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--sp-300);
+      background: rgba(24, 24, 24, 0.88);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: var(--sp-75) var(--sp-75) var(--sp-75) var(--sp-200);
+      max-width: 760px;
+      width: auto;
+    }
+    .brand-link {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-75);
+      color: var(--text-primary);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-50);
+    }
+    .nav-item {
+      color: var(--text-muted);
+      text-decoration: none;
+      padding: var(--sp-75) var(--sp-100);
+      border-radius: var(--sp-75);
+      transition: color 300ms var(--curve), background 300ms var(--curve);
+      white-space: nowrap;
+    }
+    .nav-item:hover, .nav-item[aria-current="true"] {
+      color: var(--text-primary);
+      background: var(--bg-control);
+    }
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-75);
+    }
+
+    /* Buttons (B2: main buttons 8px vertical, 12px horizontal) */
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--sp-75);
+      padding: var(--sp-75) var(--sp-100);
+      min-height: 40px;
+      border-radius: var(--sp-75);
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: #ffffff;
+      text-decoration: none;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 300ms var(--curve), transform 300ms var(--curve);
+    }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-primary:active { transform: scale(0.98); }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--sp-75);
+      padding: var(--sp-75) var(--sp-100);
+      min-height: 40px;
+      border-radius: var(--sp-75);
+      border: 1px solid var(--border);
+      background: var(--bg-control);
+      color: var(--text-primary);
+      text-decoration: none;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 300ms var(--curve), transform 300ms var(--curve);
+    }
+    .btn-secondary:hover { background: var(--border); }
+    .btn-secondary:active { transform: scale(0.98); }
+
+    /* Animated Mobile Menu Toggle */
+    .menu-toggle {
+      display: none;
+      width: 40px;
+      height: 40px;
+      border-radius: var(--sp-75);
+      border: 1px solid var(--border);
+      background: var(--bg-control);
+      color: var(--text-primary);
+      cursor: pointer;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .menu-toggle .bar {
+      width: 16px;
+      height: 1.5px;
+      background: #ffffff;
+      border-radius: 2px;
+      transition: transform 500ms var(--curve), opacity 300ms var(--curve);
+    }
+    .menu-toggle[aria-expanded="true"] .bar-top {
+      transform: translateY(3.75px) rotate(45deg);
+    }
+    .menu-toggle[aria-expanded="true"] .bar-bot {
+      transform: translateY(-3.75px) rotate(-45deg);
+    }
+
+    /* Full Height Mobile Menu Overlay (B7) */
+    .mobile-drawer {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      background: rgba(24, 24, 24, 0.96);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: var(--sp-900) var(--sp-300) var(--sp-400);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 500ms var(--curve);
+    }
+    .mobile-drawer.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .mobile-drawer-links {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-200);
+    }
+    .mobile-drawer-link {
+      color: var(--text-primary);
+      text-decoration: none;
+      padding: var(--sp-100) 0;
+      border: 1px solid transparent;
+      border-radius: var(--sp-75);
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 500ms var(--curve), transform 500ms var(--curve);
+    }
+    .mobile-drawer.open .mobile-drawer-link {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .mobile-drawer.open .mobile-drawer-link:nth-child(1) { transition-delay: 0ms; }
+    .mobile-drawer.open .mobile-drawer-link:nth-child(2) { transition-delay: 60ms; }
+    .mobile-drawer.open .mobile-drawer-link:nth-child(3) { transition-delay: 120ms; }
+    .mobile-drawer.open .mobile-drawer-link:nth-child(4) { transition-delay: 180ms; }
+
+    /* Page Container */
+    .wrap {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 var(--sp-200);
+      min-width: 0;
+    }
+    .dl-card, .spec-box, .sha-bar, .qr-panel, .showcase-outer, .feature-card, .step-card, .nav-pill {
+      min-width: 0;
+      max-width: 100%;
+    }
+    section { padding: var(--sp-700) 0; }
+
+    /* Hero Section */
+    .hero {
+      padding-top: 128px;
+      padding-bottom: var(--sp-700);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: var(--sp-300);
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-75);
+      padding: var(--sp-50) var(--sp-100);
+      border-radius: 999px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      flex-shrink: 0;
+    }
+    .hero-heading {
+      max-width: 680px;
+      background: linear-gradient(90deg, #FFFFFF 0%, #9B9B9B 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .hero-sub {
+      max-width: 680px;
+      color: var(--text-muted);
+    }
+    .hero-cta-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--sp-100);
+    }
+    .alt-platform-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 300ms var(--curve);
+    }
+    .alt-platform-link:hover { color: var(--text-primary); }
+
+    /* Hero Device Showcase (B3 nested radii: outer 24px, pad 16px -> inner 8px) */
+    .showcase-outer {
+      width: 100%;
+      max-width: 960px;
+      margin-top: var(--sp-200);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: var(--sp-200);
+      text-align: left;
+    }
+    .showcase-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--sp-100);
+      margin-bottom: var(--sp-200);
+      flex-wrap: wrap;
+    }
+    .tab-group {
+      display: inline-flex;
+      gap: var(--sp-50);
+      padding: var(--sp-50);
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+    .tab-btn {
+      padding: var(--sp-50) var(--sp-100);
+      border-radius: var(--sp-75);
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: background 300ms var(--curve), color 300ms var(--curve);
+    }
+    .tab-btn.active {
+      background: var(--bg-control);
+      color: var(--text-primary);
+    }
+    .showcase-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--sp-200);
+    }
+    .mock-pane {
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--sp-75);
+      padding: var(--sp-200);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: var(--sp-100);
+    }
+    .mock-meter {
+      height: 8px;
+      width: 100%;
+      border-radius: 4px;
+      background: var(--bg-control);
+      overflow: hidden;
+    }
+    .mock-meter-fill {
+      height: 100%;
+      width: 78%;
+      background: var(--accent);
+      border-radius: 4px;
+    }
+
+    /* Problem & Benefits Grid */
+    .section-head {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-100);
+      margin-bottom: var(--sp-400);
+      max-width: 680px;
+    }
+    .muted { color: var(--text-muted); }
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--sp-200);
+    }
+    .feature-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: var(--sp-300);
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-100);
+    }
+    .icon-box {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--sp-75);
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border);
+      display: grid;
+      place-items: center;
+      color: var(--text-primary);
+    }
+
+    /* B11 Mandatory Word by Word Tagline Reveal Section */
+    .reveal-band {
+      padding: var(--sp-900) 0;
+    }
+    .reveal-statement {
+      max-width: 680px;
+    }
+    .reveal-word {
+      display: inline-block;
+      color: var(--text-primary);
+      opacity: 0.28;
+      transform: translateY(4px);
+      transition: opacity 500ms var(--curve), transform 500ms var(--curve);
+      margin-right: 0.24em;
+    }
+    .reveal-word.lit {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Downloads Grid (Mobile APK + Windows PC EXE) */
+    .dl-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--sp-300);
+      align-items: stretch;
+    }
+    .dl-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: var(--sp-300);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: var(--sp-300);
+    }
+    .dl-card-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--sp-200);
+    }
+    .ver-pill {
+      padding: var(--sp-50) var(--sp-100);
+      border-radius: var(--sp-75);
+      background: var(--bg-control);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+      white-space: nowrap;
+    }
+    .spec-box {
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--sp-100);
+      padding: var(--sp-200);
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-75);
+    }
+    .spec-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--sp-100);
+      color: var(--text-muted);
+    }
+    .spec-row strong { color: var(--text-primary); font-weight: 500; }
+    .sha-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--sp-75);
+      background: var(--bg-canvas);
+      border: 1px solid var(--border);
+      border-radius: var(--sp-75);
+      padding: var(--sp-75) var(--sp-100);
+    }
+    .sha-code {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text-muted);
+      min-width: 0;
+    }
+    .copy-feedback {
+      color: var(--green);
+      min-height: 16px;
+    }
+    .dl-actions-row {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-100);
+      flex-wrap: wrap;
+    }
+    .qr-panel {
+      margin-top: var(--sp-300);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: var(--sp-200);
+      display: flex;
+      align-items: center;
+      gap: var(--sp-300);
+      flex-wrap: wrap;
+    }
+    .qr-box {
+      width: 96px;
+      height: 96px;
+      background: #ffffff;
+      border-radius: var(--sp-75);
+      padding: var(--sp-75);
+      flex-shrink: 0;
+    }
+    .qr-box img { width: 100%; height: 100%; display: block; }
+
+    /* Steps Section */
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--sp-200);
+    }
+    .step-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: var(--sp-300);
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-100);
+    }
+
+    /* FAQ Accordion */
+    .faq-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-100);
+    }
+    details.faq-item {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: var(--sp-200);
+    }
+    details.faq-item summary {
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--sp-200);
+      color: var(--text-primary);
+    }
+    details.faq-item summary::-webkit-details-marker { display: none; }
+    .faq-chev {
+      flex-shrink: 0;
+      color: var(--text-muted);
+      transition: transform 500ms var(--curve);
+    }
+    details.faq-item[open] .faq-chev { transform: rotate(180deg); }
+    .faq-answer {
+      margin-top: var(--sp-100);
+      color: var(--text-muted);
+      max-width: 680px;
+    }
+
+    /* Final CTA Band */
+    .final-cta {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: var(--sp-600) var(--sp-300);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: var(--sp-200);
+    }
+
+    /* Semantic Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: var(--sp-500) 0;
+      margin-top: var(--sp-400);
+    }
+    .footer-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--sp-200);
+      flex-wrap: wrap;
+    }
+    .footer-links {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-300);
+      flex-wrap: wrap;
+    }
+    .footer-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 300ms var(--curve);
+    }
+    .footer-links a:hover { color: var(--text-primary); }
+
+    /* Scroll Reveal Animation (B7: transform & opacity only) */
+    .reveal-on-scroll {
+      opacity: 0;
+      transform: translateY(32px);
+      transition: opacity 700ms var(--curve), transform 700ms var(--curve);
+    }
+    .reveal-on-scroll.in-view {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @media (max-width: 900px) {
+      .showcase-grid, .dl-grid, .cards-grid, .steps-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 767px) {
+      .heading-1 { font-size: 2.25rem; line-height: 40px; }
+      .heading-2 { font-size: 1.875rem; line-height: 36px; }
+      .heading-3 { font-size: 1.5rem; line-height: 32px; }
+      .nav-pill { width: 100%; padding: var(--sp-75) var(--sp-100); }
+      .nav-links, .nav-desktop-cta { display: none; }
+      .menu-toggle { display: inline-flex; }
+      section { padding: var(--sp-600) 0; }
+      .hero { padding-top: var(--sp-900); padding-bottom: var(--sp-600); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .reveal-on-scroll, .reveal-word, .mobile-drawer, .mobile-drawer-link, .menu-toggle .bar {
+        transition-duration: 150ms !important;
+        transform: none !important;
+      }
+      .reveal-word { opacity: 1; }
+      .reveal-on-scroll { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link button-sm" href="#mainContent">Skip to content</a>
+
+  <!-- Compact Floating Top Bar -->
+  <header class="nav-shell">
+    <nav class="nav-pill" aria-label="Primary navigation">
+      <a class="brand-link title-3" href="#heroTop">
+        <svg width="20" height="24" viewBox="0 0 120 140" aria-hidden="true">
+          <path d="M98 18 L44 18 C25 18 18 30 18 46 C18 63 29 72 51 77 L69 81 C82 84 85 89 85 95 C85 103 77 107 62 107 L19 107 L19 125 L76 125 C97 125 104 111 104 94 C104 75 91 66 68 61 L50 57 C38 54 35 49 35 43 C35 36 42 33 56 33 L98 33 Z" fill="#e50914"/>
+        </svg>
+        <span>StreamHub</span>
+      </a>
+
+      <div class="nav-links">
+        <a class="nav-item caption-2" href="#benefits" aria-current="false">Features</a>
+        <a class="nav-item caption-2" href="#downloads" aria-current="false">Downloads</a>
+        <a class="nav-item caption-2" href="#howItWorks" aria-current="false">Setup</a>
+        <a class="nav-item caption-2" href="#faq" aria-current="false">FAQ</a>
+      </div>
+
+      <div class="nav-right">
+        <a class="btn-primary button-sm nav-desktop-cta" href="#downloads">Download app</a>
+        <button class="menu-toggle" id="mobileMenuBtn" type="button" aria-label="Open navigation menu" aria-expanded="false" aria-controls="mobileDrawer">
+          <span class="bar bar-top"></span>
+          <span class="bar bar-bot"></span>
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <!-- Full Height Animated Mobile Navigation Drawer -->
+  <div class="mobile-drawer" id="mobileDrawer" aria-hidden="true">
+    <div class="mobile-drawer-links">
+      <a class="mobile-drawer-link heading-3" href="#benefits" onclick="closeDrawer()">Features</a>
+      <a class="mobile-drawer-link heading-3" href="#downloads" onclick="closeDrawer()">Downloads</a>
+      <a class="mobile-drawer-link heading-3" href="#howItWorks" onclick="closeDrawer()">Setup guide</a>
+      <a class="mobile-drawer-link heading-3" href="#faq" onclick="closeDrawer()">Questions</a>
+    </div>
+    <a class="btn-primary button-md" href="#downloads" onclick="closeDrawer()" style="width:100%;">Download Android or Windows</a>
+  </div>
+
+  <main id="mainContent" class="wrap">
+    <!-- Hero Section -->
+    <section class="hero" id="heroTop">
+      <div class="hero-badge caption-4">
+        <span class="live-dot" aria-hidden="true"></span>
+        <span id="heroReleaseStatus">Latest Android APK v2.5.4 and Windows PC build</span>
+      </div>
+
+      <h1 class="heading-1 hero-heading">
+        Direct 4K streaming<br>built for speed
+      </h1>
+
+      <p class="body-3 hero-sub">
+        StreamHub connects directly to source mirrors without waiting rooms or browser clutter, giving you hardware accelerated playback and private offline storage on Android and Windows.
+      </p>
+
+      <div class="hero-cta-wrap">
+        <a class="btn-primary button-md" id="heroPrimaryCta" href="https://github.com/khushal-jangid/streamhub/releases/download/v2.5.4/StreamHub.apk">
+          <svg width="18" height="18" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M128 32v120"/><polyline points="80 104 128 152 176 104"/><path d="M216 152v56a8 8 0 0 1-8 8H48a8 8 0 0 1-8-8v-56"/></svg>
+          <span id="heroPrimaryLabel">Download for Android APK</span>
+        </a>
+        <a class="alt-platform-link caption-2" href="#downloads">See both Android and Windows installers</a>
+      </div>
+
+      <!-- Product Showcase Window -->
+      <div class="showcase-outer" aria-label="StreamHub workspace overview">
+        <div class="showcase-bar">
+          <div class="tab-group" role="tablist" aria-label="Platform preview">
+            <button class="tab-btn caption-4 active" type="button" onclick="switchShowcase('mobile', this)">Android Player</button>
+            <button class="tab-btn caption-4" type="button" onclick="switchShowcase('desktop', this)">Windows PC</button>
+          </div>
+          <span class="caption-4 muted" id="showcaseCaption">Ten connection segmented downloader and background foreground service</span>
+        </div>
+
+        <div class="showcase-grid" id="showcaseGrid">
+          <article class="mock-pane">
+            <div class="caption-4 muted">ENGINE</div>
+            <div class="title-3" id="mockTitle1">Parallel segment downloads</div>
+            <p class="caption-2 muted" id="mockDesc1">Splits 4K and 1080p files across up to ten byte range streams for sustained throughput.</p>
+            <div class="mock-meter" aria-hidden="true"><div class="mock-meter-fill"></div></div>
+          </article>
+          <article class="mock-pane">
+            <div class="caption-4 muted" id="mockKicker2">STORAGE</div>
+            <div class="title-3" id="mockTitle2">Private offline vault</div>
+            <p class="caption-2 muted" id="mockDesc2">Saves inside protected app storage hidden from your gallery with storage caps and cleanup.</p>
+            <div class="caption-4 mono muted" id="mockFoot2">filesDir / .nomedia</div>
+          </article>
+          <article class="mock-pane">
+            <div class="caption-4 muted" id="mockKicker3">UPDATES</div>
+            <div class="title-3" id="mockTitle3">Startup release alerts</div>
+            <p class="caption-2 muted" id="mockDesc3">Checks verified GitHub release digests on launch and prompts inside the app.</p>
+            <div class="caption-4 mono muted" id="mockFoot3">SHA256 verified</div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Problem to Solution + Outcome Benefits -->
+    <section id="benefits" class="reveal-on-scroll">
+      <div class="section-head">
+        <span class="caption-4 muted">WHY STREAMHUB</span>
+        <h2 class="heading-3">Leave broken mirrors and slow single thread downloads behind</h2>
+        <p class="body-6 muted">Every playback link and download stream runs locally on your hardware with zero tracking scripts or third party cloud relays.</p>
+      </div>
+
+      <div class="cards-grid">
+        <article class="feature-card">
+          <div class="icon-box">
+            <svg width="20" height="20" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="72 40 208 128 72 216 72 40"/></svg>
+          </div>
+          <h3 class="title-2">Instant seeking and episode continuity</h3>
+          <p class="body-6 muted">Direct HTTP range seeking opens 4K MKV, MP4, and HLS streams immediately while remembering audio tracks and playback timestamps.</p>
+        </article>
+
+        <article class="feature-card">
+          <div class="icon-box">
+            <svg width="20" height="20" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M128 32v120"/><polyline points="80 104 128 152 176 104"/><path d="M216 152v56a8 8 0 0 1-8 8H48a8 8 0 0 1-8-8v-56"/></svg>
+          </div>
+          <h3 class="title-2">Continuous background downloads</h3>
+          <p class="body-6 muted">Android ForegroundService keeps transfers active behind lock screens with notification tray progress, wake locks, pause, and resume.</p>
+        </article>
+
+        <article class="feature-card">
+          <div class="icon-box">
+            <svg width="20" height="20" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M128 24l80 32v64c0 52-34 94-80 112C82 214 48 172 48 120V56z"/><polyline points="92 128 118 154 166 104"/></svg>
+          </div>
+          <h3 class="title-2">Isolated storage with automatic cleanup</h3>
+          <p class="body-6 muted">Set a strict 2 GB, 4 GB, or 8 GB cap so watched titles clean automatically without cluttering phone photos or downloads.</p>
+        </article>
+
+        <article class="feature-card">
+          <div class="icon-box">
+            <svg width="20" height="20" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="32" y="48" width="192" height="144" rx="16"/><line x1="96" y1="224" x2="160" y2="224"/></svg>
+          </div>
+          <h3 class="title-2">Desktop VLC engine plus phone remote</h3>
+          <p class="body-6 muted">Windows PC builds ship libVLC with night audio boost, subtitle sync shortcuts, local network QR pairing, and phone remote controls.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- Mandatory B11 Word-by-Word Scroll Reveal Section -->
+    <section class="reveal-band" id="philosophy" aria-label="Core engineering philosophy">
+      <div class="reveal-statement heading-2" id="revealStatement" data-text="Cinema stays fast and private when the software runs directly on your device without middlemen.">
+        Cinema stays fast and private when the software runs directly on your device without middlemen.
+      </div>
+    </section>
+
+    <!-- All Downloads Section (Mobile APK + Windows PC EXE) -->
+    <section id="downloads" class="reveal-on-scroll">
+      <div class="section-head">
+        <span class="caption-4 muted">OFFICIAL RELEASES</span>
+        <h2 class="heading-3">Download StreamHub for your device</h2>
+        <p class="body-6 muted">Choose Android APK for mobile phones and tablets, or the standalone Windows executable for desktop computers.</p>
+      </div>
+
+      <div class="dl-grid">
+        <!-- Android Mobile Card -->
+        <article class="dl-card" id="androidCard">
+          <div>
+            <div class="dl-card-head">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div class="icon-box">
+                  <svg width="20" height="20" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="64" y="24" width="128" height="208" rx="16"/><line x1="128" y1="196" x2="128" y2="196.1"/></svg>
+                </div>
+                <div>
+                  <h3 class="heading-5">Android App</h3>
+                  <p class="caption-2 muted">Phones and Android tablets</p>
+                </div>
+              </div>
+              <span class="ver-pill caption-4 mono" id="apkVerBadge">v2.5.4</span>
+            </div>
+
+            <div class="spec-box" style="margin-top:24px;">
+              <div class="spec-row caption-2"><span>Package</span><strong class="mono">StreamHub.apk</strong></div>
+              <div class="spec-row caption-2"><span>File size</span><strong class="mono" id="apkSizeText">74.4 MB</strong></div>
+              <div class="spec-row caption-2"><span>Requirement</span><strong>Android 8.0 or newer</strong></div>
+              <div class="sha-bar">
+                <span class="sha-code caption-4 mono" id="apkShaCode">SHA256 fdfb0942e428b8ea41f61420ddbcc90f4d21566c5671e4bcb42be1509639766c</span>
+                <button class="btn-secondary caption-4" type="button" onclick="copyChecksum('apk')">Copy</button>
+              </div>
+              <div class="copy-feedback caption-4" id="apkCopyMsg" aria-live="polite"></div>
+            </div>
+          </div>
+
+          <div class="dl-actions-row">
+            <a class="btn-primary button-md" id="apkDownloadBtn" href="https://github.com/khushal-jangid/streamhub/releases/download/v2.5.4/StreamHub.apk" style="flex:1 1 200px;">
+              <svg width="18" height="18" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M128 32v120"/><polyline points="80 104 128 152 176 104"/><path d="M216 152v56a8 8 0 0 1-8 8H48a8 8 0 0 1-8-8v-56"/></svg>
+              <span>Download Android APK</span>
+            </a>
+          </div>
+        </article>
+
+        <!-- Windows PC Card -->
+        <article class="dl-card" id="windowsCard">
+          <div>
+            <div class="dl-card-head">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div class="icon-box">
+                  <svg width="20" height="20" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="32" y="48" width="192" height="144" rx="16"/><line x1="96" y1="224" x2="160" y2="224"/></svg>
+                </div>
+                <div>
+                  <h3 class="heading-5">Windows PC</h3>
+                  <p class="caption-2 muted">Desktop with libVLC engine</p>
+                </div>
+              </div>
+              <span class="ver-pill caption-4 mono" id="exeVerBadge">v2.5.0</span>
+            </div>
+
+            <div class="spec-box" style="margin-top:24px;">
+              <div class="spec-row caption-2"><span>Executable</span><strong class="mono">StreamHub.exe</strong></div>
+              <div class="spec-row caption-2"><span>File size</span><strong class="mono" id="exeSizeText">83.6 MB</strong></div>
+              <div class="spec-row caption-2"><span>Requirement</span><strong>Windows 10 or 11 (64 bit)</strong></div>
+              <div class="sha-bar">
+                <span class="sha-code caption-4 mono" id="exeShaCode">SHA256 7723fd9cd24e81c3efbf87c8184fecdbb37191504e6e82c85a7adcd7a5a2250c</span>
+                <button class="btn-secondary caption-4" type="button" onclick="copyChecksum('exe')">Copy</button>
+              </div>
+              <div class="copy-feedback caption-4" id="exeCopyMsg" aria-live="polite"></div>
+            </div>
+          </div>
+
+          <div class="dl-actions-row">
+            <a class="btn-secondary button-md" id="exeDownloadBtn" href="https://github.com/khushal-jangid/streamhub/releases/download/v2.5.0/StreamHub.exe" style="flex:1 1 200px;">
+              <svg width="18" height="18" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M128 32v120"/><polyline points="80 104 128 152 176 104"/><path d="M216 152v56a8 8 0 0 1-8 8H48a8 8 0 0 1-8-8v-56"/></svg>
+              <span>Download Windows EXE</span>
+            </a>
+          </div>
+        </article>
+      </div>
+
+      <!-- QR Transfer Card -->
+      <aside class="qr-panel">
+        <div class="qr-box">
+          <img src="apk-qr.svg" alt="QR code linking to the latest StreamHub release page on GitHub">
+        </div>
+        <div style="flex:1 1 240px;min-width:0;">
+          <h3 class="title-3">Viewing this page on your PC?</h3>
+          <p class="body-6 muted" style="margin-top:4px;max-width:520px;">Scan this QR code with your Android camera to open the latest APK release directly on your phone browser.</p>
+          <div style="margin-top:12px;">
+            <a class="alt-platform-link caption-2" href="https://github.com/khushal-jangid/streamhub/releases" target="_blank" rel="noopener">Browse full release archive on GitHub</a>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <!-- How It Works (3 Steps) -->
+    <section id="howItWorks" class="reveal-on-scroll">
+      <div class="section-head">
+        <span class="caption-4 muted">QUICK SETUP</span>
+        <h2 class="heading-3">From download to playback in three steps</h2>
+      </div>
+
+      <div class="steps-grid">
+        <article class="step-card">
+          <span class="caption-4 mono muted">STEP 01</span>
+          <h3 class="title-2">Download verified package</h3>
+          <p class="body-6 muted">Grab the Android APK on mobile or the standalone Windows file directly from official GitHub release assets.</p>
+        </article>
+        <article class="step-card">
+          <span class="caption-4 mono muted">STEP 02</span>
+          <h3 class="title-2">Allow installation once</h3>
+          <p class="body-6 muted">On Android enable Install unknown apps for your browser once. On Windows select More info and Run anyway.</p>
+        </article>
+        <article class="step-card">
+          <span class="caption-4 mono muted">STEP 03</span>
+          <h3 class="title-2">Watch online or offline</h3>
+          <p class="body-6 muted">Browse latest releases, select quality and audio language, or save movies inside private offline storage.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- FAQ Section (6 clear questions, zero hyphens) -->
+    <section id="faq" class="reveal-on-scroll">
+      <div class="section-head">
+        <span class="caption-4 muted">COMMON QUESTIONS</span>
+        <h2 class="heading-3">Answers before you install</h2>
+      </div>
+
+      <div class="faq-list">
+        <details class="faq-item">
+          <summary class="title-3">
+            <span>Do downloaded movies fill up my phone gallery or public Downloads folder?</span>
+            <svg class="faq-chev" width="18" height="18" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="64 96 128 160 192 96"/></svg>
+          </summary>
+          <p class="faq-answer body-6">No. StreamHub stores offline video inside the private Android application directory alongside a media exclusion file, keeping your gallery clean and deleting cached downloads automatically when you uninstall.</p>
+        </details>
+
+        <details class="faq-item">
+          <summary class="title-3">
+            <span>Will downloads stop if I close the app or lock my phone screen?</span>
+            <svg class="faq-chev" width="18" height="18" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="64 96 128 160 192 96"/></svg>
+          </summary>
+          <p class="faq-answer body-6">No. Android builds run a dedicated foreground sync service with CPU and network locks, showing live megabyte progress in your notification drawer until the download finishes.</p>
+        </details>
+
+        <details class="faq-item">
+          <summary class="title-3">
+            <span>How does StreamHub achieve higher download speeds for 4K files?</span>
+            <svg class="faq-chev" width="18" height="18" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="64 96 128 160 192 96"/></svg>
+          </summary>
+          <p class="faq-answer body-6">Whenever upstream servers support HTTP byte ranges, StreamHub splits the file across up to ten parallel worker streams and tracks completed segments on disk so pause and resume remain lossless.</p>
+        </details>
+
+        <details class="faq-item">
+          <summary class="title-3">
+            <span>Why does Android or Windows SmartScreen ask permission the first time?</span>
+            <svg class="faq-chev" width="18" height="18" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="64 96 128 160 192 96"/></svg>
+          </summary>
+          <p class="faq-answer body-6">StreamHub ships outside commercial app stores as direct open software. You can verify the exact SHA256 digest shown above against your downloaded file before opening it.</p>
+        </details>
+
+        <details class="faq-item">
+          <summary class="title-3">
+            <span>How do future app updates work after installation?</span>
+            <svg class="faq-chev" width="18" height="18" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="64 96 128 160 192 96"/></svg>
+          </summary>
+          <p class="faq-answer body-6">On every app launch, StreamHub checks this repository manifest and displays an update popup whenever a newer release or instant update patch is published.</p>
+        </details>
+
+        <details class="faq-item">
+          <summary class="title-3">
+            <span>Is any account registration or subscription fee required?</span>
+            <svg class="faq-chev" width="18" height="18" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="64 96 128 160 192 96"/></svg>
+          </summary>
+          <p class="faq-answer body-6">No account or payment is required. All profile names, preferred audio languages, themes, and watch history stay locally on your device.</p>
+        </details>
+      </div>
+    </section>
+
+    <!-- Bottom Final CTA -->
+    <section class="reveal-on-scroll">
+      <div class="final-cta">
+        <h2 class="heading-3" style="max-width:680px;">Start watching on Android or Windows</h2>
+        <p class="body-3 muted" style="max-width:520px;">Free open source software distributed directly from GitHub with verified SHA256 checksums.</p>
+        <a class="btn-primary button-md" href="#downloads">Choose your installer</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap">
+    <div class="footer-inner">
+      <span class="caption-2 muted">StreamHub Open Cinema Software</span>
+      <div class="footer-links caption-2">
+        <a href="privacy.html">Privacy</a>
+        <a href="terms.html">Terms</a>
+        <a href="https://github.com/khushal-jangid/streamhub" target="_blank" rel="noopener">GitHub Repository</a>
+        <a href="https://github.com/khushal-jangid/streamhub/releases" target="_blank" rel="noopener">All Releases</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    const RELEASES = {
+      apkUrl: "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.4/StreamHub.apk",
+      apkVersion: "v2.5.4",
+      apkSize: "74.4 MB",
+      apkSha: "fdfb0942e428b8ea41f61420ddbcc90f4d21566c5671e4bcb42be1509639766c",
+      exeUrl: "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.0/StreamHub.exe",
+      exeVersion: "v2.5.0",
+      exeSize: "83.6 MB",
+      exeSha: "7723fd9cd24e81c3efbf87c8184fecdbb37191504e6e82c85a7adcd7a5a2250c"
+    };
+
+    function fmtMb(bytes) {
+      const b = Number(bytes || 0);
+      if (!b) return "";
+      return (b / (1024 * 1024)).toFixed(1) + " MB";
+    }
+
+    function applyPlatformCta() {
+      const ua = navigator.userAgent || "";
+      const isWin = /Windows/i.test(ua);
+      const isAndroid = /Android/i.test(ua);
+      const btn = document.getElementById("heroPrimaryCta");
+      const lbl = document.getElementById("heroPrimaryLabel");
+      if (!btn || !lbl) return;
+      if (isWin && !isAndroid) {
+        btn.href = RELEASES.exeUrl;
+        lbl.textContent = "Download for Windows PC";
+      } else {
+        btn.href = RELEASES.apkUrl;
+        lbl.textContent = "Download for Android APK";
+      }
+    }
+
+    async function syncLatestManifest() {
+      try {
+        const res = await fetch("https://raw.githubusercontent.com/khushal-jangid/streamhub/main/dist/version.json", { cache: "no-store" });
+        if (!res.ok) return;
+        const v = await res.json();
+        if (v.apk_download_url) {
+          RELEASES.apkUrl = v.apk_download_url;
+          const m = v.apk_download_url.match(/\/download\/([^/]+)\//);
+          if (m) RELEASES.apkVersion = m[1];
+          document.getElementById("apkDownloadBtn").href = v.apk_download_url;
+          document.getElementById("apkVerBadge").textContent = RELEASES.apkVersion;
+        }
+        if (v.apk_size_bytes) {
+          RELEASES.apkSize = fmtMb(v.apk_size_bytes);
+          document.getElementById("apkSizeText").textContent = RELEASES.apkSize;
+        }
+        if (v.apk_sha256) {
+          RELEASES.apkSha = v.apk_sha256;
+          document.getElementById("apkShaCode").textContent = "SHA256 " + v.apk_sha256;
+        }
+        if (v.download_url) {
+          RELEASES.exeUrl = v.download_url;
+          const m2 = v.download_url.match(/\/download\/([^/]+)\//);
+          if (m2) RELEASES.exeVersion = m2[1];
+          document.getElementById("exeDownloadBtn").href = v.download_url;
+          document.getElementById("exeVerBadge").textContent = RELEASES.exeVersion;
+        }
+        if (v.size_bytes) {
+          RELEASES.exeSize = fmtMb(v.size_bytes);
+          document.getElementById("exeSizeText").textContent = RELEASES.exeSize;
+        }
+        if (v.sha256) {
+          RELEASES.exeSha = v.sha256;
+          document.getElementById("exeShaCode").textContent = "SHA256 " + v.sha256;
+        }
+        const st = document.getElementById("heroReleaseStatus");
+        if (st) st.textContent = `Latest Android APK ${RELEASES.apkVersion} and Windows PC ${RELEASES.exeVersion}`;
+        applyPlatformCta();
+      } catch (e) {}
+    }
+
+    async function copyChecksum(kind) {
+      const hex = kind === "exe" ? RELEASES.exeSha : RELEASES.apkSha;
+      const msgEl = document.getElementById(kind === "exe" ? "exeCopyMsg" : "apkCopyMsg");
+      try {
+        await navigator.clipboard.writeText(hex);
+        if (msgEl) msgEl.textContent = "Checksum copied to clipboard";
+      } catch (e) {
+        if (msgEl) msgEl.textContent = "Copy manually from the hex box above";
+      }
+      setTimeout(() => { if (msgEl) msgEl.textContent = ""; }, 2600);
+    }
+
+    function switchShowcase(mode, btn) {
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      if (btn) btn.classList.add("active");
+      const cap = document.getElementById("showcaseCaption");
+      const t1 = document.getElementById("mockTitle1");
+      const d1 = document.getElementById("mockDesc1");
+      const k2 = document.getElementById("mockKicker2");
+      const t2 = document.getElementById("mockTitle2");
+      const d2 = document.getElementById("mockDesc2");
+      const f2 = document.getElementById("mockFoot2");
+      const k3 = document.getElementById("mockKicker3");
+      const t3 = document.getElementById("mockTitle3");
+      const d3 = document.getElementById("mockDesc3");
+      const f3 = document.getElementById("mockFoot3");
+      if (mode === "desktop") {
+        cap.textContent = "Native Windows desktop engine paired with your phone over local network";
+        t1.textContent = "Native libVLC playback";
+        d1.textContent = "Hardware accelerated HEVC, Dolby audio passthrough, frame stepping, and night volume boost.";
+        k2.textContent = "REMOTE";
+        t2.textContent = "Local network phone remote";
+        d2.textContent = "Scan the in app QR code from any phone browser to pause, seek, and adjust audio live.";
+        f2.textContent = "LAN HTTP + QR sync";
+        k3.textContent = "RELEASES";
+        t3.textContent = "Automatic desktop updates";
+        d3.textContent = "Staged executable replacement with SHA256 hash verification directly inside app settings.";
+        f3.textContent = "Signed EXE + SHA256";
+      } else {
+        cap.textContent = "Ten connection segmented downloader and background foreground service";
+        t1.textContent = "Parallel segment downloads";
+        d1.textContent = "Splits 4K and 1080p files across up to ten byte range streams for sustained throughput.";
+        k2.textContent = "STORAGE";
+        t2.textContent = "Private offline vault";
+        d2.textContent = "Saves inside protected app storage hidden from your gallery with storage caps and cleanup.";
+        f2.textContent = "filesDir / .nomedia";
+        k3.textContent = "UPDATES";
+        t3.textContent = "Startup release alerts";
+        d3.textContent = "Checks verified GitHub release digests on launch and prompts inside the app.";
+        f3.textContent = "SHA256 verified";
+      }
+    }
+
+    /* Animated Full Height Mobile Drawer */
+    const menuBtn = document.getElementById("mobileMenuBtn");
+    const drawer = document.getElementById("mobileDrawer");
+    function closeDrawer() {
+      if (!menuBtn || !drawer) return;
+      menuBtn.setAttribute("aria-expanded", "false");
+      drawer.classList.remove("open");
+      drawer.setAttribute("aria-hidden", "true");
+    }
+    if (menuBtn && drawer) {
+      menuBtn.addEventListener("click", () => {
+        const exp = menuBtn.getAttribute("aria-expanded") === "true";
+        menuBtn.setAttribute("aria-expanded", String(!exp));
+        drawer.classList.toggle("open", !exp);
+        drawer.setAttribute("aria-hidden", String(exp));
+      });
+    }
+
+    /* B11 Word-by-Word Scroll Reveal via rAF Throttled Reading Order Activation */
+    const revealEl = document.getElementById("revealStatement");
+    if (revealEl) {
+      const words = revealEl.textContent.trim().split(/\s+/);
+      revealEl.innerHTML = words.map(w => `<span class="reveal-word">${w}</span>`).join(" ");
+      const wordNodes = Array.from(revealEl.querySelectorAll(".reveal-word"));
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (reduceMotion) {
+        wordNodes.forEach(n => n.classList.add("lit"));
+      } else {
+        let ticking = false;
+        const updateWordLights = () => {
+          ticking = false;
+          const vh = window.innerHeight || 800;
+          const rect = revealEl.getBoundingClientRect();
+          const span = Math.max(240, rect.height + vh * 0.25);
+          const progress = Math.min(1, Math.max(0, (vh * 0.82 - rect.top) / span));
+          const litCount = Math.round(progress * wordNodes.length);
+          wordNodes.forEach((n, idx) => n.classList.toggle("lit", idx < litCount));
+        };
+        const onScrollRaf = () => {
+          if (!ticking) {
+            ticking = true;
+            window.requestAnimationFrame(updateWordLights);
+          }
+        };
+        const ioBand = new IntersectionObserver((entries) => {
+          entries.forEach(en => {
+            if (en.isIntersecting) {
+              updateWordLights();
+              window.addEventListener("scroll", onScrollRaf, { passive: true });
+            } else {
+              window.removeEventListener("scroll", onScrollRaf);
+            }
+          });
+        }, { threshold: 0.05 });
+        ioBand.observe(revealEl);
+      }
+    }
+
+    /* Section Scroll Reveals & Active Nav Indicator via IntersectionObserver */
+    const scrollSections = document.querySelectorAll(".reveal-on-scroll");
+    if ("IntersectionObserver" in window) {
+      const ioSec = new IntersectionObserver((entries) => {
+        entries.forEach(en => {
+          if (en.isIntersecting) {
+            en.target.classList.add("in-view");
+            ioSec.unobserve(en.target);
+          }
+        });
+      }, { threshold: 0.12 });
+      scrollSections.forEach(s => ioSec.observe(s));
+
+      const navLinks = Array.from(document.querySelectorAll(".nav-links .nav-item"));
+      const ioNav = new IntersectionObserver((entries) => {
+        entries.forEach(en => {
+          if (en.isIntersecting) {
+            const id = "#" + en.target.id;
+            navLinks.forEach(a => a.setAttribute("aria-current", a.getAttribute("href") === id ? "true" : "false"));
+          }
+        });
+      }, { rootMargin: "-35% 0px -55% 0px" });
+      ["benefits", "downloads", "howItWorks", "faq"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) ioNav.observe(el);
+      });
+    } else {
+      scrollSections.forEach(s => s.classList.add("in-view"));
+    }
+
+    applyPlatformCta();
+    syncLatestManifest();
+  </script>
+</body>
+</html>
