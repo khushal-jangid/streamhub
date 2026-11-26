@@ -15,6 +15,7 @@ import struct
 import zlib
 import subprocess
 import shutil
+import uuid
 import gzip as _gzip
 import tempfile
 import pathlib
@@ -52,7 +53,7 @@ if sys.platform == 'win32':
     except Exception:
         pass
 
-APP_VERSION = "2.4.1"
+APP_VERSION = "2.5.0"
 DEFAULT_UPDATE_URL = "khushal-jangid/streamhub"
 STREAMHUB_UPDATE_URL = os.environ.get("STREAMHUB_UPDATE_URL", "").strip()
 _ENV_DATA_DIR = os.environ.get("STREAMHUB_DATA_DIR", "").strip()
@@ -67,6 +68,13 @@ else:
     _APP_DATA_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROGRESS_FILE = os.path.join(_APP_DATA_DIR, "streamhub_progress.json")
 _CONFIG_FILE = os.path.join(_APP_DATA_DIR, "streamhub_config.json")
+_OFFLINE_DIR = os.path.join(_APP_DATA_DIR, "offline_movies")
+_OFFLINE_META_FILE = os.path.join(_APP_DATA_DIR, "offline_downloads.json")
+_OFFLINE_LOCK = threading.Lock()
+_OFFLINE_ACTIVE_WORKERS = set()
+_OFFLINE_ACTIVE_STREAMS = {}
+_OFFLINE_PAUSED_IDS = set()
+_OFFLINE_DELETED_IDS = set()
 _SNAPSHOT_DIR = os.path.join(os.path.expanduser("~"), "Pictures", "StreamHub Snapshots")
 
 PORT = 5050
@@ -3731,6 +3739,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 <link rel="icon" type="image/svg+xml" href="/icon.svg">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <title>StreamHub — Netflix &bull; Prime &bull; Hotstar 4K OTT Experience</title>
+<script>try{var _t=localStorage.getItem('sh_theme');if(_t&&_t!=='netflix')document.documentElement.setAttribute('data-theme',_t);}catch(e){}</script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <style>
 :root {
@@ -3759,6 +3768,50 @@ HTML_PAGE = r"""<!DOCTYPE html>
     --radius-md: 12px;
     --radius-sm: 8px;
     --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.78);
+    --glow-1: rgba(229, 9, 20, 0.14);
+    --glow-2: rgba(0, 168, 225, 0.12);
+}
+
+html[data-theme="amoled"] {
+    --bg: #000000;
+    --bg-elevated: #050507;
+    --surface: rgba(8, 8, 12, 0.96);
+    --surface-solid: #08080c;
+    --surface-2: #111118;
+    --surface-hover: #1b1b26;
+    --border: rgba(255, 255, 255, 0.09);
+    --glow-1: rgba(229, 9, 20, 0.10);
+    --glow-2: rgba(99, 102, 241, 0.08);
+}
+
+html[data-theme="prime"] {
+    --bg: #040914;
+    --bg-elevated: #081224;
+    --surface: rgba(9, 18, 34, 0.92);
+    --surface-solid: #0b162a;
+    --surface-2: #12223d;
+    --surface-hover: #1a3054;
+    --netflix: #00a8e1;
+    --netflix-dark: #0284c7;
+    --accent: #00a8e1;
+    --accent-hover: #38bdf8;
+    --glow-1: rgba(0, 168, 225, 0.18);
+    --glow-2: rgba(56, 189, 248, 0.12);
+}
+
+html[data-theme="gold"] {
+    --bg: #08070d;
+    --bg-elevated: #110f1b;
+    --surface: rgba(16, 14, 26, 0.92);
+    --surface-solid: #12101e;
+    --surface-2: #1c192d;
+    --surface-hover: #282440;
+    --netflix: #f59e0b;
+    --netflix-dark: #d97706;
+    --accent: #f59e0b;
+    --accent-hover: #fbbf24;
+    --glow-1: rgba(245, 158, 11, 0.16);
+    --glow-2: rgba(168, 85, 247, 0.12);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -3766,8 +3819,8 @@ html { scroll-behavior: smooth; background: var(--bg); }
 body {
     font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background:
-        radial-gradient(ellipse 75% 440px at 18% -90px, rgba(229, 9, 20, 0.14), transparent 70%),
-        radial-gradient(ellipse 65% 400px at 84% -60px, rgba(0, 168, 225, 0.12), transparent 68%),
+        radial-gradient(ellipse 75% 440px at 18% -90px, var(--glow-1), transparent 70%),
+        radial-gradient(ellipse 65% 400px at 84% -60px, var(--glow-2), transparent 68%),
         var(--bg);
     color: var(--text);
     min-height: 100vh;
@@ -4717,6 +4770,91 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     border-radius: 12px; padding: 12px 14px; font-size: 0.8rem; color: var(--text-muted); line-height: 1.55; margin-top: 14px;
 }
 .modal-steps b { color: var(--text); }
+
+/* ── Dedicated Settings Page & Offline Downloads UI ─────── */
+.settings-dialog {
+    width: 100%; max-width: 680px; max-height: 92vh; overflow-y: auto;
+    background: var(--bg-elevated); border: 1px solid var(--border-strong);
+    border-radius: 22px; text-align: left; box-shadow: var(--shadow-lg);
+}
+.settings-head {
+    position: sticky; top: 0; z-index: 5;
+    background: rgba(11, 14, 22, 0.94); backdrop-filter: blur(16px);
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.settings-body { padding: 18px 20px 26px; display: flex; flex-direction: column; gap: 14px; }
+.settings-card {
+    background: var(--surface-solid); border: 1px solid var(--border);
+    border-radius: 16px; padding: 15px 16px;
+}
+.settings-card-title {
+    font-size: 0.86rem; font-weight: 800; color: var(--text);
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px;
+}
+.settings-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 10px 0; border-top: 1px solid rgba(255,255,255,0.06); flex-wrap: wrap;
+}
+.settings-row:first-of-type { border-top: none; padding-top: 0; }
+.settings-label { font-size: 0.82rem; font-weight: 700; color: var(--text); }
+.settings-sub { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; line-height: 1.35; }
+.avatar-grid { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.avatar-chip {
+    width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--border-strong);
+    background: var(--surface-2); font-size: 1.25rem; cursor: pointer; display: grid; place-items: center;
+    transition: transform 0.14s, border-color 0.14s, background 0.14s;
+}
+.avatar-chip.active { border-color: var(--accent); background: rgba(229,9,20,0.18); transform: scale(1.06); }
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(136px, 1fr)); gap: 10px; }
+.theme-card {
+    background: var(--surface-2); border: 1.5px solid var(--border); border-radius: 13px;
+    padding: 11px 12px; cursor: pointer; text-align: left; transition: border-color 0.16s, transform 0.14s;
+}
+.theme-card:hover { border-color: var(--border-strong); }
+.theme-card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); transform: translateY(-1px); }
+.theme-dots { display: flex; gap: 6px; margin-bottom: 7px; }
+.theme-dot { width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.22); }
+.theme-name { font-size: 0.8rem; font-weight: 800; color: var(--text); }
+.theme-desc { font-size: 0.69rem; color: var(--text-muted); margin-top: 2px; }
+.update-entry-card {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;
+    background: linear-gradient(135deg, rgba(99,102,241,0.16), rgba(229,9,20,0.10));
+    border: 1px solid rgba(99,102,241,0.42); border-radius: 15px; padding: 14px 16px;
+    cursor: pointer; text-align: left; color: var(--text); transition: transform 0.14s, border-color 0.16s;
+}
+.update-entry-card:hover { transform: translateY(-1px); border-color: rgba(129,140,248,0.8); }
+.storage-bar-track {
+    width: 100%; height: 9px; border-radius: 999px; background: rgba(255,255,255,0.08);
+    overflow: hidden; margin: 8px 0 6px;
+}
+.storage-bar-fill { height: 100%; width: 0%; background: var(--accent); transition: width 0.3s ease; border-radius: 999px; }
+.dl-item-card {
+    display: flex; gap: 12px; align-items: flex-start;
+    background: var(--surface-solid); border: 1px solid var(--border);
+    border-radius: 14px; padding: 12px; margin-bottom: 10px;
+}
+.dl-poster {
+    width: 54px; height: 78px; border-radius: 9px; object-fit: cover;
+    background: var(--surface-2); flex-shrink: 0;
+}
+.dl-q-pill, .dl-lang-pill {
+    background: var(--surface-2); border: 1px solid var(--border-strong); color: var(--text);
+    padding: 8px 12px; border-radius: 10px; font-size: 0.78rem; font-weight: 700; cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+.dl-q-pill.active, .dl-lang-pill.active {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.nav-dl-badge {
+    min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px;
+    background: var(--accent); color: #fff; font-size: 0.65rem; font-weight: 900;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+@media (max-width: 640px) {
+    .settings-dialog { max-width: 100%; max-height: 94vh; border-radius: 18px; }
+    .settings-head, .settings-body { padding-left: 14px; padding-right: 14px; }
+}
 .trailer-frame-wrap { width: 100%; aspect-ratio: 16/9; border-radius: 14px; overflow: hidden; background: #000; margin-top: 12px; }
 .trailer-frame-wrap iframe { width: 100%; height: 100%; border: none; }
 
@@ -5030,8 +5168,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
         </div>
 
         <div class="nav-actions">
-            <button class="smart-pill active" id="btnNavUpdatePill" onclick="openUpdateModal()" style="display:none;padding:4px 10px;font-size:0.72rem;" title="New Update Available">⬆ Update</button>
-            <span class="mode-chip" id="deviceModeChip" onclick="openUpdateModal()" style="cursor:pointer;" title="App Updates &amp; Status"><span class="dot-live"></span><span id="deviceModeText">PC VLC Mode</span></span>
+            <button class="smart-pill active" id="btnNavUpdatePill" onclick="openUpdateModal(false)" style="display:none;padding:4px 10px;font-size:0.72rem;" title="New Update Available">⬆ Update</button>
+            <span class="mode-chip" id="deviceModeChip" onclick="openSettingsModal()" style="cursor:pointer;" title="Profile, Theme &amp; Status"><span id="deviceModeText">PC VLC Mode</span></span>
             <button class="btn-install-nav" id="btnInstallApp" onclick="triggerInstallApp()" title="Install App" aria-label="Install App">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 <span>Install</span>
@@ -5044,9 +5182,13 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3z"/><path d="M20 14v7h-7"/></svg>
                 <span>Phone QR</span>
             </button>
-            <button class="btn-remote-nav" id="btnNavSettings" onclick="openUpdateModal()" title="Settings &amp; App Updates" aria-label="Settings and App Updates" style="position:relative;">
+            <button class="btn-remote-nav" id="btnNavDownloads" onclick="openDownloadsModal()" title="Offline Downloads" aria-label="Open Offline Downloads" style="display:inline-flex;align-items:center;gap:5px;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span class="nav-dl-badge" id="navDownloadsBadge" style="display:none;">0</span>
+            </button>
+            <button class="btn-remote-nav" id="btnNavSettings" onclick="openSettingsModal()" title="Settings, Theme, Profile &amp; Updates" aria-label="Open Settings" style="position:relative;">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                <span>Settings</span>
+                <span id="navProfileAvatar">🎬</span>
                 <span id="navSettingsDot" style="display:none;position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:#e50914;box-shadow:0 0 0 2px #0b0e17;"></span>
             </button>
         </div>
@@ -5173,7 +5315,10 @@ html, body { max-width: 100%; overflow-x: hidden; }
                     <button class="filter-btn" id="libTabFavs" onclick="setLibraryTab('favs')">My List</button>
                 </div>
             </div>
-            <button class="btn-sm btn-copy-sm" onclick="clearLibraryTab()">Clear</button>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <button class="btn-sm btn-indigo-sm" id="libOpenDownloadsBtn" onclick="openDownloadsModal()">📥 Downloads <span id="libDlCount">(0)</span></button>
+                <button class="btn-sm btn-copy-sm" onclick="clearLibraryTab()">Clear</button>
+            </div>
         </div>
         <div class="shelf-row" id="libraryShelf"></div>
     </section>
@@ -5201,12 +5346,16 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 <div id="detailScreenshots" class="screenshots-strip" style="display:none;"></div>
 
                 <div id="movieQualityBox">
-                    <label style="display:block;font-size:0.82rem;font-weight:700;color:var(--text-muted);margin-bottom:8px;">Select Quality or Instant HLS Stream:</label>
+                    <label style="display:block;font-size:0.82rem;font-weight:700;color:var(--text-muted);margin-bottom:8px;">Select Quality &amp; Language (Stream ya Private Download):</label>
                     <div class="quality-row">
                         <select id="qualitySelect" class="select-control"></select>
                         <button id="btnStreamQuality" class="btn-primary" onclick="useSelectedQuality()">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
                             <span>Stream Quality</span>
+                        </button>
+                        <button id="btnDownloadQuality" class="btn-secondary" type="button" onclick="openDownloadPickerFromDetails()" style="min-height:44px;padding:0 16px;border-radius:11px;display:inline-flex;align-items:center;gap:7px;font-weight:800;white-space:nowrap;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span>Download</span>
                         </button>
                     </div>
                 </div>
@@ -5269,6 +5418,10 @@ html, body { max-width: 100%; overflow-x: hidden; }
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                         .m3u8 Playlist
                     </a>
+                    <button id="btnOfflineDownloadActive" class="btn-action" type="button" onclick="openDownloadPickerFromActive()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Save Offline
+                    </button>
                     <button class="btn-action" onclick="copyActiveStreamUrl()">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                         Copy Stream URL
@@ -5387,7 +5540,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
             <button class="smart-pill" data-sf="recent" onclick="toggleSmartFilter('recent', this)">2025–2026 New</button>
             <button class="smart-pill" data-sf="imdb7" onclick="toggleSmartFilter('imdb7', this)">⭐ IMDb 7+</button>
             <button class="smart-pill" id="btnSmartClear" onclick="clearSmartFilters()" style="display:none;">✕ Clear</button>
-            <button class="smart-pill" id="btnAppVersionChip" onclick="openUpdateModal()" style="margin-left:auto;" title="Settings &amp; App Updates">v2.4.1 • Settings &amp; Updates</button>
+            <button class="smart-pill" id="btnHomeDownloadsPill" onclick="openDownloadsModal()" style="display:inline-flex;align-items:center;gap:5px;">📥 My Downloads <span id="homeDlCountPill">(0)</span></button>
+            <button class="smart-pill" id="btnAppVersionChip" onclick="openSettingsModal()" style="margin-left:auto;" title="Settings, Profile, Themes &amp; Updates">v2.5.0 • Settings</button>
         </div>
         <div class="search-grid" id="searchGrid"></div>
         <div class="load-more-wrap">
@@ -5548,64 +5702,298 @@ html, body { max-width: 100%; overflow-x: hidden; }
     </div>
 </div>
 
-<!-- App Auto-Update & Easy PC Setup Modal -->
+<!-- Full Dedicated Settings Page Modal -->
+<div class="modal-overlay" id="settingsModalOverlay" onclick="if(event.target===this) closeSettingsModal()" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+    <div class="settings-dialog">
+        <div class="settings-head">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <span id="settingsHeadAvatar" style="width:42px;height:42px;border-radius:13px;background:var(--surface-2);border:1px solid var(--border-strong);display:grid;place-items:center;font-size:1.35rem;">🎬</span>
+                <div>
+                    <h2 id="settingsModalTitle" style="font-size:1.08rem;font-weight:900;color:#fff;">⚙️ StreamHub Settings</h2>
+                    <div id="settingsHeadSub" style="font-size:0.74rem;color:var(--text-muted);margin-top:1px;">Profile, Themes, Private Downloads &amp; App Updates</div>
+                </div>
+            </div>
+            <button class="btn-close-card" onclick="closeSettingsModal()" aria-label="Close settings">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="settings-body">
+            <!-- 1. Profile Settings -->
+            <section class="settings-card">
+                <div class="settings-card-title">
+                    <span>👤 Profile &amp; Language Preference</span>
+                    <button type="button" class="btn-sm btn-vlc-sm" onclick="saveProfileSettings()">Save Profile</button>
+                </div>
+                <div class="avatar-grid" id="avatarPickerGrid">
+                    <button type="button" class="avatar-chip active" data-av="🎬" onclick="pickProfileAvatar(this)">🎬</button>
+                    <button type="button" class="avatar-chip" data-av="🍿" onclick="pickProfileAvatar(this)">🍿</button>
+                    <button type="button" class="avatar-chip" data-av="🔥" onclick="pickProfileAvatar(this)">🔥</button>
+                    <button type="button" class="avatar-chip" data-av="👑" onclick="pickProfileAvatar(this)">👑</button>
+                    <button type="button" class="avatar-chip" data-av="🦁" onclick="pickProfileAvatar(this)">🦁</button>
+                    <button type="button" class="avatar-chip" data-av="⚡" onclick="pickProfileAvatar(this)">⚡</button>
+                </div>
+                <div class="settings-row">
+                    <div style="flex:1 1 180px;">
+                        <div class="settings-label">Profile Name</div>
+                        <div class="settings-sub">Aapka naam aur watch profile</div>
+                    </div>
+                    <input type="text" id="setProfileName" class="select-control" style="max-width:220px;padding:8px 12px;" placeholder="Your Name" maxlength="32">
+                </div>
+                <div class="settings-row">
+                    <div style="flex:1 1 180px;">
+                        <div class="settings-label">Preferred Audio Language</div>
+                        <div class="settings-sub">Resolve aur Download me pehle yahi bhasha chuni jayegi</div>
+                    </div>
+                    <select id="setProfileLang" class="select-control" style="max-width:190px;padding:8px 12px;">
+                        <option value="Auto">Auto (Default)</option>
+                        <option value="Hindi">Hindi</option>
+                        <option value="English">English</option>
+                        <option value="Dual Audio">Dual Audio (Hindi+Eng)</option>
+                        <option value="Tamil">Tamil</option>
+                        <option value="Telugu">Telugu</option>
+                        <option value="Punjabi">Punjabi</option>
+                        <option value="Bengali">Bengali</option>
+                        <option value="Malayalam">Malayalam</option>
+                        <option value="Kannada">Kannada</option>
+                    </select>
+                </div>
+            </section>
+
+            <!-- 2. Theme Settings -->
+            <section class="settings-card">
+                <div class="settings-card-title">
+                    <span>🎨 App Theme</span>
+                    <span id="activeThemeBadge" style="font-size:0.72rem;color:var(--text-muted);font-weight:700;">Netflix Crimson</span>
+                </div>
+                <div class="theme-grid" id="themePickerGrid">
+                    <button type="button" class="theme-card active" data-theme-id="netflix" onclick="applyAndSaveTheme('netflix')">
+                        <div class="theme-dots"><span class="theme-dot" style="background:#05060b;"></span><span class="theme-dot" style="background:#e50914;"></span></div>
+                        <div class="theme-name">Netflix Crimson</div>
+                        <div class="theme-desc">Signature cinema dark red</div>
+                    </button>
+                    <button type="button" class="theme-card" data-theme-id="amoled" onclick="applyAndSaveTheme('amoled')">
+                        <div class="theme-dots"><span class="theme-dot" style="background:#000000;"></span><span class="theme-dot" style="background:#e50914;"></span></div>
+                        <div class="theme-name">AMOLED Pure Black</div>
+                        <div class="theme-desc">Pitch black OLED battery saver</div>
+                    </button>
+                    <button type="button" class="theme-card" data-theme-id="prime" onclick="applyAndSaveTheme('prime')">
+                        <div class="theme-dots"><span class="theme-dot" style="background:#040914;"></span><span class="theme-dot" style="background:#00a8e1;"></span></div>
+                        <div class="theme-name">Prime Sapphire</div>
+                        <div class="theme-desc">Deep ocean sapphire blue</div>
+                    </button>
+                    <button type="button" class="theme-card" data-theme-id="gold" onclick="applyAndSaveTheme('gold')">
+                        <div class="theme-dots"><span class="theme-dot" style="background:#08070d;"></span><span class="theme-dot" style="background:#f59e0b;"></span></div>
+                        <div class="theme-name">Royal Theater Gold</div>
+                        <div class="theme-desc">Warm luxury amber gold</div>
+                    </button>
+                </div>
+            </section>
+
+            <!-- 3. Private Offline Downloads & Storage Management -->
+            <section class="settings-card">
+                <div class="settings-card-title">
+                    <span>📥 Private In-App Downloads &amp; Storage</span>
+                    <span style="font-size:0.7rem;color:#6ee7b7;background:rgba(16,185,129,0.14);border:1px solid rgba(16,185,129,0.3);padding:2px 8px;border-radius:999px;">🔒 Gallery Hidden</span>
+                </div>
+                <div style="font-size:0.75rem;color:var(--text-muted);line-height:1.4;">
+                    Movies app ke andar private folder (<code style="color:#cbd5e1;">.nomedia</code>) me save hoti hain — phone ki Gallery ya File Manager me show nahi hoti, aur app uninstall karte hi clean ho jati hain.
+                </div>
+                <div class="storage-bar-track"><div class="storage-bar-fill" id="setStorageBarFill"></div></div>
+                <div style="display:flex;justify-content:space-between;font-size:0.74rem;color:#cbd5e1;font-weight:700;margin-bottom:10px;">
+                    <span id="setStorageText">Used: 0 MB / Limit: 4 GB</span>
+                    <span id="setDownloadCountText">0 Offline Items</span>
+                </div>
+                <div class="settings-row">
+                    <div>
+                        <div class="settings-label">Storage Cap Limit</div>
+                        <div class="settings-sub">Limit poori hone par watched movies pehle clean hongi</div>
+                    </div>
+                    <select id="setStorageCap" class="select-control" style="max-width:165px;padding:8px 10px;" onchange="saveDownloadPrefs()">
+                        <option value="2">2 GB (Low Space)</option>
+                        <option value="4">4 GB (Balanced)</option>
+                        <option value="8">8 GB</option>
+                        <option value="16">16 GB</option>
+                        <option value="0">Unlimited</option>
+                    </select>
+                </div>
+                <div class="settings-row">
+                    <div>
+                        <div class="settings-label">Smart Auto-Delete (Watched)</div>
+                        <div class="settings-sub">Movie 95%+ dekhne par space bachaane ke liye auto-delete</div>
+                    </div>
+                    <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:0.8rem;font-weight:700;">
+                        <input type="checkbox" id="setAutoDelWatched" checked onchange="saveDownloadPrefs()" style="width:18px;height:18px;accent-color:var(--accent);">
+                        <span>On</span>
+                    </label>
+                </div>
+                <div class="settings-row">
+                    <div>
+                        <div class="settings-label">Auto-Expire Days</div>
+                        <div class="settings-sub">Purani offline files kitne din baad auto-clean hon</div>
+                    </div>
+                    <select id="setExpireDays" class="select-control" style="max-width:150px;padding:8px 10px;" onchange="saveDownloadPrefs()">
+                        <option value="7">7 Days</option>
+                        <option value="14">14 Days</option>
+                        <option value="30">30 Days</option>
+                        <option value="0">Never Expire</option>
+                    </select>
+                </div>
+                <div class="settings-row">
+                    <div>
+                        <div class="settings-label">Default Download Quality</div>
+                        <div class="settings-sub">Low-size ke liye 480p ya 720p best rehta hai</div>
+                    </div>
+                    <select id="setDefaultDlQuality" class="select-control" style="max-width:165px;padding:8px 10px;" onchange="saveDownloadPrefs()">
+                        <option value="480p">480p (Low Size)</option>
+                        <option value="720p">720p HD (Rec.)</option>
+                        <option value="1080p">1080p Full HD</option>
+                        <option value="ask">Ask Every Time</option>
+                    </select>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+                    <button type="button" class="btn-sm btn-indigo-sm" style="flex:1 1 160px;min-height:38px;" onclick="closeSettingsModal(); openDownloadsModal();">📂 Open My Downloads</button>
+                    <button type="button" class="btn-sm btn-copy-sm" style="min-height:38px;" onclick="clearAllOfflineDownloads()">🗑️ Clear Offline Storage</button>
+                </div>
+            </section>
+
+            <!-- 4. Dedicated App Update Entry (Opens Separate Update Page) -->
+            <button type="button" class="update-entry-card" onclick="openUpdateModal(true)">
+                <div>
+                    <div style="font-size:0.95rem;font-weight:900;display:flex;align-items:center;gap:8px;">
+                        <span>🔄 App Updates &amp; Version</span>
+                        <span id="settingsUpdateBadge" style="font-size:0.7rem;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,0.12);color:#e2e8f0;font-weight:800;">v2.5.0</span>
+                    </div>
+                    <div id="settingsUpdateSub" style="font-size:0.75rem;color:#cbd5e1;margin-top:3px;">Check naya APK / Instant Update, Release Notes &amp; Update Source</div>
+                </div>
+                <span style="font-size:1.2rem;font-weight:900;color:#c7d2fe;">›</span>
+            </button>
+
+            <!-- 5. Movies Feed & PC Tools -->
+            <section class="settings-card">
+                <div class="settings-card-title"><span>🛠️ Catalog Refresh &amp; Tools</span></div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 150px;" onclick="clearCacheAndRefresh()">↻ Refresh Latest Movies</button>
+                </div>
+                <div id="pcSetupToolsCard" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+                    <div style="font-size:0.78rem;font-weight:800;color:var(--gold);margin-bottom:8px;">1-Click Easy PC Setup Tools</div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 140px;" onclick="runSetupAction('shortcut')">Add Desktop Shortcut</button>
+                        <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 140px;" onclick="runSetupAction('firewall')">Fix Phone Wi-Fi Firewall</button>
+                        <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 120px;" onclick="closeSettingsModal(); openRemoteModal();">📡 PC Remote</button>
+                        <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 120px;" onclick="closeSettingsModal(); openQrModal();">📱 Phone QR</button>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+</div>
+
+<!-- App Updates Dedicated Page Modal -->
 <div class="modal-overlay" id="updateModalOverlay" onclick="if(event.target===this) closeUpdateModal()" role="dialog" aria-modal="true" aria-labelledby="updateModalTitle">
     <div class="modal-dialog" style="max-width:520px;width:96%;text-align:left;padding:18px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-            <div>
-                <h2 id="updateModalTitle" style="font-size:1.05rem;font-weight:800;color:#fff;">⚙️ StreamHub Settings &amp; Updates</h2>
-                <div id="updateMetaLine" style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">Version loading...</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;">
+            <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+                <button type="button" id="btnUpdateBackToSettings" class="btn-sm btn-copy-sm" onclick="closeUpdateModal(); openSettingsModal();" title="Back to Settings">← Settings</button>
+                <div style="min-width:0;">
+                    <h2 id="updateModalTitle" style="font-size:1.05rem;font-weight:900;color:#fff;">🔄 App Updates</h2>
+                    <div id="updateMetaLine" style="font-size:0.74rem;color:var(--text-muted);margin-top:2px;">Version loading...</div>
+                </div>
             </div>
-            <button class="btn-close-card" onclick="closeUpdateModal()" aria-label="Close settings modal">
+            <button class="btn-close-card" onclick="closeUpdateModal()" aria-label="Close update page">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
         </div>
 
-        <div style="background:#070910;border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:12px;">
+        <div style="background:#070910;border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px;">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-                <span style="font-size:0.82rem;font-weight:800;color:#fff;">App Updates</span>
+                <span style="font-size:0.84rem;font-weight:800;color:#fff;">Release Status</span>
                 <button type="button" id="btnCheckUpdateBig" class="btn-sm btn-indigo-sm" onclick="checkAppUpdate(true, true)">🔄 Check for Updates</button>
             </div>
-            <div id="updateStatusBox" style="font-size:0.8rem;color:var(--text-muted);line-height:1.45;">Checking for updates...</div>
+            <div id="updateStatusBox" style="font-size:0.82rem;color:var(--text-muted);line-height:1.45;">Checking for updates...</div>
             <div id="updateDownloadBox" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08);">
-                <div id="updateNotesText" style="font-size:0.76rem;color:#cbd5e1;margin-bottom:8px;white-space:pre-line;"></div>
-                <div id="updateProgWrap" style="display:none;background:#1e293b;border-radius:999px;height:8px;overflow:hidden;margin-bottom:8px;">
+                <div id="updateNotesText" style="font-size:0.78rem;color:#cbd5e1;margin-bottom:10px;white-space:pre-line;line-height:1.45;"></div>
+                <div id="updateProgWrap" style="display:none;background:#1e293b;border-radius:999px;height:8px;overflow:hidden;margin-bottom:10px;">
                     <div id="updateProgFill" style="height:100%;width:0%;background:var(--netflix);transition:width 0.25s;"></div>
                 </div>
-                <!-- PC EXE update button (hidden on Android) -->
-                <button type="button" id="btnApplyUpdate" class="btn-sm btn-vlc-sm" onclick="applyAppUpdateNow()" style="width:100%;min-height:38px;font-size:0.84rem;display:none;">Download &amp; Install Update</button>
-                <!-- Android Instant OTA Python update button (2 sec, ~0.5 MB) -->
-                <button type="button" id="btnOtaPyUpdate" class="btn-sm btn-vlc-sm" onclick="applyOtaPyUpdateNow()" style="display:none;width:100%;min-height:40px;font-size:0.85rem;margin-bottom:8px;">⚡ Instant Update (Fast ~0.5 MB)</button>
-                <!-- Android APK update button (native in-app download + installer) -->
-                <button type="button" id="btnApkUpdate" class="btn-sm btn-vlc-sm" onclick="applyAndroidApkUpdateNow()" style="display:none;width:100%;min-height:40px;font-size:0.85rem;">📱 Download &amp; Install APK</button>
+                <button type="button" id="btnApplyUpdate" class="btn-sm btn-vlc-sm" onclick="applyAppUpdateNow()" style="width:100%;min-height:40px;font-size:0.85rem;display:none;">Download &amp; Install Update</button>
+                <button type="button" id="btnOtaPyUpdate" class="btn-sm btn-vlc-sm" onclick="applyOtaPyUpdateNow()" style="display:none;width:100%;min-height:42px;font-size:0.86rem;margin-bottom:8px;">⚡ Instant Update (Fast ~0.5 MB)</button>
+                <button type="button" id="btnApkUpdate" class="btn-sm btn-vlc-sm" onclick="applyAndroidApkUpdateNow()" style="display:none;width:100%;min-height:42px;font-size:0.86rem;">📱 Download &amp; Install APK</button>
                 <a id="linkApkExternal" href="#" target="_blank" rel="noopener" onclick="if(window.StreamHubAndroid&&window.StreamHubAndroid.openExternalUrl){window.StreamHubAndroid.openExternalUrl(this.href);return false;}" style="display:none;margin-top:8px;text-align:center;font-size:0.76rem;color:#93c5fd;text-decoration:underline;">Ya Browser se APK Download Karein</a>
             </div>
         </div>
 
-        <div style="background:#070910;border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:12px;">
-            <div style="font-size:0.8rem;font-weight:800;color:#bae6fd;margin-bottom:8px;">Movies Feed &amp; Cache</div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 160px;" onclick="clearCacheAndRefresh()">↻ Refresh Latest Movies</button>
+        <details style="background:#070910;border:1px solid var(--border);border-radius:12px;padding:12px;">
+            <summary style="cursor:pointer;font-size:0.76rem;color:var(--text-muted);font-weight:700;">Advanced: Update Source (GitHub Repo / URL)</summary>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+                <input type="text" id="updateFeedInput" class="input-control" style="flex:1 1 200px;min-width:0;background:#0b0e17;border:1px solid var(--border-strong);color:#fff;border-radius:9px;padding:8px 10px;font-size:0.82rem;outline:none;" placeholder="e.g. khushal-jangid/streamhub">
+                <button type="button" id="btnCheckNow" class="btn-sm btn-indigo-sm" onclick="saveUpdateFeedAndCheck()">Save &amp; Check</button>
             </div>
-            <details style="margin-top:10px;">
-                <summary style="cursor:pointer;font-size:0.74rem;color:var(--text-muted);font-weight:600;">Advanced: Update Source (GitHub / URL)</summary>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
-                    <input type="text" id="updateFeedInput" class="input-control" style="flex:1 1 200px;min-width:0;background:#0b0e17;border:1px solid var(--border-strong);color:#fff;border-radius:9px;padding:8px 10px;font-size:0.82rem;outline:none;" placeholder="e.g. khushal-jangid/streamhub">
-                    <button type="button" id="btnCheckNow" class="btn-sm btn-indigo-sm" onclick="saveUpdateFeedAndCheck()">Save &amp; Check</button>
+        </details>
+    </div>
+</div>
+
+<!-- My Private Offline Downloads Manager Modal -->
+<div class="modal-overlay" id="downloadsModalOverlay" onclick="if(event.target===this) closeDownloadsModal()" role="dialog" aria-modal="true" aria-labelledby="downloadsModalTitle">
+    <div class="settings-dialog">
+        <div class="settings-head">
+            <div>
+                <h2 id="downloadsModalTitle" style="font-size:1.06rem;font-weight:900;color:#fff;">📥 My Offline Downloads</h2>
+                <div style="font-size:0.73rem;color:#6ee7b7;margin-top:2px;">🔒 Saved privately in App Storage (Gallery/Files se hidden • Bina net ke play karein)</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <button type="button" class="btn-sm btn-copy-sm" onclick="closeDownloadsModal(); openSettingsModal();" title="Storage Limit &amp; Auto-Delete Settings">⚙️</button>
+                <button class="btn-close-card" onclick="closeDownloadsModal()" aria-label="Close downloads">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+        </div>
+        <div class="settings-body">
+            <div class="settings-card" style="padding:12px 14px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:0.77rem;font-weight:700;color:#e2e8f0;">
+                    <span id="dlModalStorageText">Used: 0 MB / 4 GB Limit</span>
+                    <span id="dlModalPolicyText" style="color:var(--text-muted);font-size:0.71rem;">Auto-Delete Watched: ON • Expire: 7d</span>
                 </div>
-            </details>
+                <div class="storage-bar-track"><div class="storage-bar-fill" id="dlModalStorageFill"></div></div>
+            </div>
+            <div id="downloadsListWrap"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Download Quality & Audio Language Picker Modal -->
+<div class="modal-overlay" id="downloadPickerModal" onclick="if(event.target===this) closeDownloadPicker()" role="dialog" aria-modal="true" aria-labelledby="dlPickerTitle">
+    <div class="modal-dialog" style="max-width:500px;width:96%;text-align:left;padding:18px;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:12px;">
+            <div style="display:flex;gap:11px;align-items:center;min-width:0;">
+                <img id="dlPickerPoster" src="" alt="" style="width:46px;height:66px;border-radius:8px;object-fit:cover;background:var(--surface-2);display:none;flex-shrink:0;">
+                <div style="min-width:0;">
+                    <div style="font-size:0.7rem;font-weight:800;color:var(--accent);text-transform:uppercase;letter-spacing:0.6px;">Private Offline Download</div>
+                    <h2 id="dlPickerTitle" style="font-size:0.98rem;font-weight:900;color:#fff;line-height:1.25;">Movie Title</h2>
+                    <div id="dlPickerSub" style="font-size:0.72rem;color:var(--text-muted);margin-top:2px;">Low storage usage + Gallery hidden</div>
+                </div>
+            </div>
+            <button class="btn-close-card" onclick="closeDownloadPicker()" aria-label="Close download picker">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
         </div>
 
-        <div id="pcSetupToolsCard" style="background:#070910;border:1px solid var(--border);border-radius:12px;padding:12px;">
-            <div style="font-size:0.8rem;font-weight:800;color:var(--gold);margin-bottom:8px;">1-Click Easy PC Setup Tools</div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 150px;" onclick="runSetupAction('shortcut')">Add Desktop Shortcut</button>
-                <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 150px;" onclick="runSetupAction('firewall')">Fix Phone Wi-Fi Firewall</button>
-            </div>
-            <div style="font-size:0.72rem;color:var(--text-muted);margin-top:9px;line-height:1.45;">
-                Update push karne ke liye <b>publish_release.bat</b> chalakar naya <b>StreamHub.exe</b> + <b>StreamHub.apk</b> + <b>version.json</b> GitHub Release par push karein — sab PC &amp; Android users 1-click me update kar payenge.
-            </div>
+        <div style="margin-bottom:12px;">
+            <div style="font-size:0.76rem;font-weight:800;color:var(--text-muted);margin-bottom:7px;">1. Select Video Quality (480p/720p saves space)</div>
+            <div id="dlPickerQualities" style="display:flex;flex-direction:column;gap:7px;max-height:210px;overflow-y:auto;"></div>
         </div>
+
+        <div style="margin-bottom:14px;">
+            <div style="font-size:0.76rem;font-weight:800;color:var(--text-muted);margin-bottom:7px;">2. Preferred Audio Language</div>
+            <div id="dlPickerLangs" style="display:flex;gap:7px;flex-wrap:wrap;"></div>
+        </div>
+
+        <div id="dlPickerStorageHint" style="font-size:0.73rem;color:#94a3b8;background:#070910;border:1px solid var(--border);border-radius:10px;padding:9px 11px;margin-bottom:12px;">
+            🔒 Saves inside private app storage only • Auto-cleans when watched
+        </div>
+
+        <button type="button" id="btnStartDownloadConfirm" class="vlc-banner" style="min-height:46px;font-size:0.92rem;justify-content:center;" onclick="confirmStartDownload()">
+            ⬇ Start Private Download
+        </button>
     </div>
 </div>
 
@@ -5628,7 +6016,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3"/><circle cx="12" cy="9" r="2"/><line x1="10" y1="15" x2="14" y2="15"/></svg>
             <span id="dockLblRemote">Remote</span>
         </button>
-        <button class="dock-btn" id="dockBtnQr" onclick="isAndroidApp() ? openUpdateModal() : openQrModal()" style="position:relative;">
+        <button class="dock-btn" id="dockBtnQr" onclick="isAndroidApp() ? openSettingsModal() : openQrModal()" style="position:relative;">
             <svg id="dockIconQr" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3z"/><path d="M20 14v7h-7"/></svg>
             <span id="dockLblQr">QR</span>
             <span id="dockSettingsDot" style="display:none;position:absolute;top:4px;right:14px;width:7px;height:7px;border-radius:50%;background:#e50914;"></span>
@@ -5654,6 +6042,19 @@ html, body { max-width: 100%; overflow-x: hidden; }
     let activeZipEntries = [];
     let activeZipIndex = -1;
     let activeZipTitle = "";
+    let activeSourceLink = "";
+    let activeResolvedMirrors = [];
+    let currentDetailsQualities = [];
+    let userSettingsState = {
+        profile: { name: "StreamHub User", avatar: "🎬", preferred_language: "Auto" },
+        theme: "netflix",
+        download_prefs: { storage_limit_gb: 4, auto_delete_watched: true, auto_expire_days: 7, default_quality: "720p" },
+        storage: { used_bytes: 0, limit_gb: 4, limit_bytes: 4294967296, active_count: 0, completed_count: 0, paused_count: 0, total_count: 0 }
+    };
+    let offlineDownloadsList = [];
+    let offlinePollTimer = null;
+    let lastWakeLockActive = null;
+    let dlPickerState = { title: "", poster: "", ep_label: "", media_key: "", parent_key: "", options: [], selectedIdx: 0, selectedLang: "Auto" };
     let catalogItems = [];
     let ottHubData = null;
     let heroItems = [];
@@ -5745,13 +6146,17 @@ html, body { max-width: 100%; overflow-x: hidden; }
     }
 
     window.__shAndroidHandleBack = function() {
-        const modals = ['inlineWebPlayerModal', 'trailerModalOverlay', 'qrModalOverlay', 'remoteModalOverlay', 'updateModalOverlay'];
+        const modals = ['downloadPickerModal', 'inlineWebPlayerModal', 'trailerModalOverlay', 'qrModalOverlay', 'remoteModalOverlay', 'updateModalOverlay', 'downloadsModalOverlay', 'settingsModalOverlay'];
         for (const id of modals) {
             const el = document.getElementById(id);
             if (el && el.classList.contains('open')) {
-                if (id === 'inlineWebPlayerModal') closeInlinePlayer();
+                if (id === 'downloadPickerModal') closeDownloadPicker();
+                else if (id === 'inlineWebPlayerModal') closeInlinePlayer();
                 else if (id === 'trailerModalOverlay') closeTrailerModal();
                 else if (id === 'qrModalOverlay') closeQrModal();
+                else if (id === 'updateModalOverlay') closeUpdateModal();
+                else if (id === 'downloadsModalOverlay') closeDownloadsModal();
+                else if (id === 'settingsModalOverlay') closeSettingsModal();
                 else el.classList.remove('open');
                 return true;
             }
@@ -5803,6 +6208,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
 
     window.__shRefreshProgressFromAndroid = function() {
         try { syncProgressFromServer(); } catch (e) {}
+        try { refreshDownloadsState(); } catch (e) {}
     };
 
     window.__shPlayNextFromAndroid = async function(encodedPayloadJson) {
@@ -6130,13 +6536,17 @@ html, body { max-width: 100%; overflow-x: hidden; }
             if (mainTxt) mainTxt.textContent = 'Play in Phone VLC App (1-Tap Seekable)';
         }
         syncProgressFromServer();
+        initSettingsAndDownloads();
         checkAppUpdate(false);
         setTimeout(() => checkAppUpdate(true, false, true), 1200);
         loadLanQr();
         loadHomeHub();
-        if (new URLSearchParams(window.location.search).get('show_updates') === '1') {
-            setTimeout(() => openUpdateModal(), 450);
-        } else if (new URLSearchParams(window.location.search).get('open') === 'qr') {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('show_updates') === '1') {
+            setTimeout(() => openUpdateModal(false), 450);
+        } else if (urlParams.get('show_settings') === '1') {
+            setTimeout(() => openSettingsModal(), 450);
+        } else if (urlParams.get('open') === 'qr') {
             setTimeout(() => openQrModal(), 450);
         }
     });
@@ -6839,12 +7249,15 @@ html, body { max-width: 100%; overflow-x: hidden; }
             const row = document.createElement('div');
             row.className = 'ep-row' + (epIdx === activeSeriesEpIdx ? ' active' : '');
             const wTag = isWatched(ep.link) ? '<span class="watched-chip">Watched</span>' : '';
+            const offDone = offlineDownloadsList.some(d => d.status === 'completed' && d.hdhub_link === ep.link);
+            const offTag = offDone ? '<span class="watched-chip" style="background:rgba(16,185,129,0.2);color:#6ee7b7;border-color:rgba(16,185,129,0.4);">Offline</span>' : '';
             row.innerHTML = `
                 <div class="ep-info">
-                    <div class="ep-title">${esc(ep.ep_label)} &bull; ${esc(ep.title)}${wTag}</div>
+                    <div class="ep-title">${esc(ep.ep_label)} &bull; ${esc(ep.title)}${wTag}${offTag}</div>
                     <div class="ep-meta">${ep.size ? 'Size: ' + esc(ep.size) : 'HD / 4K Stream'}</div>
                 </div>
                 <div class="ep-actions">
+                    <button class="btn-sm btn-copy-sm" onclick="openDownloadPickerForEpisode(${idx}, ${epIdx})" title="Download Offline">⬇</button>
                     <button class="btn-sm btn-vlc-sm" onclick="pickSeriesLink('${encodeURIComponent(ep.link)}', ${idx}, ${epIdx})">Stream Episode</button>
                 </div>
             `;
@@ -6912,17 +7325,24 @@ html, body { max-width: 100%; overflow-x: hidden; }
             }
             renderDetailMeta(details.meta);
             select.innerHTML = '';
+            currentDetailsQualities = details.qualities || [];
             if (!details.qualities || !details.qualities.length) {
                 select.innerHTML = '<option value="">Is movie ka koi working link available nahi hai</option>';
                 showToast(details.error || 'Is movie ka streaming link available nahi hai', 'err');
                 return;
             }
-            details.qualities.forEach(q => {
+            const prefLang = String((userSettingsState.profile && userSettingsState.profile.preferred_language) || 'Auto').toLowerCase();
+            let prefIdx = 0;
+            details.qualities.forEach((q, qIdx) => {
                 const opt = document.createElement('option');
                 opt.value = q.link;
                 opt.textContent = q.title;
                 select.appendChild(opt);
+                if (prefIdx === 0 && prefLang && prefLang !== 'auto' && String(q.title || '').toLowerCase().includes(prefLang)) {
+                    prefIdx = qIdx;
+                }
             });
+            if (prefIdx > 0) select.selectedIndex = prefIdx;
         } catch (e) {
             select.innerHTML = '<option value="">Error loading qualities</option>';
             showToast('Movie links load nahi ho paye: ' + e.message, 'err');
@@ -6985,6 +7405,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                     opt.textContent = t.label;
                     audioSel.appendChild(opt);
                 });
+                autoSelectPreferredAudioOption();
             }
             subSel.innerHTML = '<option value="auto">Auto / Default Subtitles</option><option value="off">Subtitles Off</option>';
             stracks.forEach(s => {
@@ -7260,6 +7681,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
             activeZipEntries = data.zip_entries || [];
             activeZipIndex = (data.is_zip && activeZipEntries.length) ? 0 : -1;
             activeZipTitle = data.zip_title || data.title || 'Season Pack';
+            activeSourceLink = url;
+            activeResolvedMirrors = data.mirrors || [];
 
             setActiveEntry(
                 data.stream_url,
@@ -7285,6 +7708,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                     opt.textContent = t.label;
                     audioSelect.appendChild(opt);
                 });
+                autoSelectPreferredAudioOption();
             }
 
             // Render Mirrors
@@ -7343,6 +7767,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                         <div class="ep-meta">${esc(ep.size)} &bull; ${seekTag}</div>
                     </div>
                     <div class="ep-actions">
+                        <button class="btn-sm btn-copy-sm" onclick="openDownloadPickerForZipEp(${i})" title="Download Episode Offline">⬇</button>
                         <button class="btn-sm btn-vlc-sm" onclick="playZipEntry(${i})">${playLbl}</button>
                         <a class="btn-sm btn-copy-sm" target="_blank" href="${esc(ep.watch_online_url)}">Web</a>
                     </div>
@@ -7896,12 +8321,710 @@ html, body { max-width: 100%; overflow-x: hidden; }
         inp.value = '';
     }
 
+    const THEME_META = {
+        netflix: { name: 'Netflix Crimson', color: '#05060b' },
+        amoled: { name: 'AMOLED Pure Black', color: '#000000' },
+        prime: { name: 'Prime Sapphire', color: '#040914' },
+        gold: { name: 'Royal Theater Gold', color: '#08070d' }
+    };
+
+    function fmtBytes(bytes) {
+        const b = Number(bytes || 0);
+        if (b <= 0) return '0 MB';
+        if (b >= 1024 * 1024 * 1024) return (b / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+        return (b / (1024 * 1024)).toFixed(b >= 100 * 1024 * 1024 ? 0 : 1) + ' MB';
+    }
+
+    function autoSelectPreferredAudioOption() {
+        const sel = document.getElementById('audioTrackSelect');
+        const pref = String((userSettingsState.profile && userSettingsState.profile.preferred_language) || 'Auto').toLowerCase();
+        if (!sel || !pref || pref === 'auto') return;
+        for (let i = 0; i < sel.options.length; i++) {
+            const txt = String(sel.options[i].textContent || '').toLowerCase();
+            if (txt.includes(pref)) {
+                sel.selectedIndex = i;
+                return;
+            }
+        }
+    }
+
+    function applyThemeUi(themeId) {
+        const th = THEME_META[themeId] ? themeId : 'netflix';
+        if (th === 'netflix') document.documentElement.removeAttribute('data-theme');
+        else document.documentElement.setAttribute('data-theme', th);
+        const mc = document.querySelector('meta[name="theme-color"]');
+        if (mc) mc.setAttribute('content', THEME_META[th].color);
+        try { localStorage.setItem('sh_theme', th); } catch (e) {}
+        document.querySelectorAll('#themePickerGrid .theme-card').forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-theme-id') === th);
+        });
+        const badge = document.getElementById('activeThemeBadge');
+        if (badge) badge.textContent = THEME_META[th].name;
+    }
+
+    function applyProfileUi(profile) {
+        const p = profile || {};
+        const av = p.avatar || '🎬';
+        const nm = p.name || 'StreamHub User';
+        const lg = p.preferred_language || 'Auto';
+        const navAv = document.getElementById('navProfileAvatar');
+        if (navAv) navAv.textContent = av;
+        const hdAv = document.getElementById('settingsHeadAvatar');
+        if (hdAv) hdAv.textContent = av;
+        const hdSub = document.getElementById('settingsHeadSub');
+        if (hdSub) hdSub.textContent = `${nm} • Audio: ${lg} • v${userSettingsState.version || '2.5.0'}`;
+        const nmInp = document.getElementById('setProfileName');
+        if (nmInp && document.activeElement !== nmInp) nmInp.value = nm;
+        const lgSel = document.getElementById('setProfileLang');
+        if (lgSel) lgSel.value = lg;
+        document.querySelectorAll('#avatarPickerGrid .avatar-chip').forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-av') === av);
+        });
+    }
+
+    function renderStorageSummaryUi(st, prefs) {
+        const s = st || userSettingsState.storage || {};
+        const p = prefs || userSettingsState.download_prefs || {};
+        const used = Number(s.used_bytes || 0);
+        const limGb = Number(p.storage_limit_gb !== undefined ? p.storage_limit_gb : (s.limit_gb || 4));
+        const limBytes = limGb > 0 ? limGb * 1024 * 1024 * 1024 : 0;
+        const pct = limBytes > 0 ? Math.min(100, Math.round((used * 100) / limBytes)) : Math.min(100, Math.round(used / (100 * 1024 * 1024)));
+        const limLabel = limGb > 0 ? `${limGb} GB` : 'Unlimited';
+        const txt = `Used: ${fmtBytes(used)} / ${limLabel}`;
+
+        const stEl = document.getElementById('setStorageText');
+        if (stEl) stEl.textContent = txt;
+        const bf = document.getElementById('setStorageBarFill');
+        if (bf) bf.style.width = pct + '%';
+        const cntEl = document.getElementById('setDownloadCountText');
+        if (cntEl) cntEl.textContent = `${s.completed_count || 0} Ready • ${s.active_count || 0} Active`;
+
+        const dlTxt = document.getElementById('dlModalStorageText');
+        if (dlTxt) dlTxt.textContent = txt;
+        const dlFill = document.getElementById('dlModalStorageFill');
+        if (dlFill) dlFill.style.width = pct + '%';
+        const dlPol = document.getElementById('dlModalPolicyText');
+        if (dlPol) dlPol.textContent = `Auto-Delete Watched: ${p.auto_delete_watched ? 'ON' : 'OFF'} • Expire: ${Number(p.auto_expire_days) > 0 ? (p.auto_expire_days + 'd') : 'Never'}`;
+
+        const capSel = document.getElementById('setStorageCap');
+        if (capSel) capSel.value = String(limGb);
+        const autoChk = document.getElementById('setAutoDelWatched');
+        if (autoChk) autoChk.checked = Boolean(p.auto_delete_watched);
+        const expSel = document.getElementById('setExpireDays');
+        if (expSel) expSel.value = String(p.auto_expire_days !== undefined ? p.auto_expire_days : 7);
+        const dqSel = document.getElementById('setDefaultDlQuality');
+        if (dqSel) dqSel.value = String(p.default_quality || '720p');
+
+        const badge = document.getElementById('navDownloadsBadge');
+        const totCnt = Number(s.total_count || 0);
+        if (badge) {
+            badge.style.display = totCnt > 0 ? 'inline-flex' : 'none';
+            badge.textContent = (s.active_count > 0) ? `⬇${s.active_count}` : String(totCnt);
+        }
+        const libCnt = document.getElementById('libDlCount');
+        if (libCnt) libCnt.textContent = `(${totCnt})`;
+        const homeCnt = document.getElementById('homeDlCountPill');
+        if (homeCnt) homeCnt.textContent = (s.active_count > 0) ? `(${s.active_count} active)` : `(${totCnt})`;
+
+        const needsWake = Number(s.active_count || 0) > 0;
+        if (lastWakeLockActive !== needsWake) {
+            lastWakeLockActive = needsWake;
+            if (window.StreamHubAndroid && typeof window.StreamHubAndroid.setDownloadWakeLock === 'function') {
+                try { window.StreamHubAndroid.setDownloadWakeLock(needsWake); } catch (e) {}
+            }
+        }
+    }
+
+    async function initSettingsAndDownloads() {
+        try {
+            const resp = await fetch('/api/settings');
+            const data = await resp.json();
+            if (data && data.success) {
+                userSettingsState = data;
+                applyThemeUi(data.theme || 'netflix');
+                applyProfileUi(data.profile);
+                renderStorageSummaryUi(data.storage, data.download_prefs);
+            }
+        } catch (e) {}
+        await refreshDownloadsState(false);
+    }
+
+    async function openSettingsModal() {
+        const ov = document.getElementById('settingsModalOverlay');
+        if (ov) ov.classList.add('open');
+        try {
+            const resp = await fetch('/api/settings');
+            const data = await resp.json();
+            if (data && data.success) {
+                userSettingsState = data;
+                applyThemeUi(data.theme || 'netflix');
+                applyProfileUi(data.profile);
+                renderStorageSummaryUi(data.storage, data.download_prefs);
+            }
+        } catch (e) {}
+    }
+
+    function closeSettingsModal() {
+        const ov = document.getElementById('settingsModalOverlay');
+        if (ov) ov.classList.remove('open');
+    }
+
+    function pickProfileAvatar(btn) {
+        document.querySelectorAll('#avatarPickerGrid .avatar-chip').forEach(b => b.classList.remove('active'));
+        if (btn) btn.classList.add('active');
+    }
+
+    async function saveProfileSettings() {
+        const nmInp = document.getElementById('setProfileName');
+        const lgSel = document.getElementById('setProfileLang');
+        const activeAv = document.querySelector('#avatarPickerGrid .avatar-chip.active');
+        const profPayload = {
+            name: nmInp ? nmInp.value.trim() : 'StreamHub User',
+            avatar: activeAv ? activeAv.getAttribute('data-av') : '🎬',
+            preferred_language: lgSel ? lgSel.value : 'Auto'
+        };
+        try {
+            const resp = await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ profile: profPayload })
+            });
+            const data = await resp.json();
+            if (data && data.success) {
+                userSettingsState = data;
+                applyProfileUi(data.profile);
+                autoSelectPreferredAudioOption();
+                showToast('Profile saved (' + data.profile.name + ')', 'ok');
+            }
+        } catch (e) {
+            showToast('Profile save failed', 'err');
+        }
+    }
+
+    async function applyAndSaveTheme(themeId) {
+        applyThemeUi(themeId);
+        try {
+            const resp = await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ theme: themeId })
+            });
+            const data = await resp.json();
+            if (data && data.success) {
+                userSettingsState = data;
+                showToast('Theme: ' + (THEME_META[themeId] ? THEME_META[themeId].name : themeId), 'ok');
+            }
+        } catch (e) {}
+    }
+
+    async function saveDownloadPrefs() {
+        const cap = document.getElementById('setStorageCap');
+        const autoDel = document.getElementById('setAutoDelWatched');
+        const exp = document.getElementById('setExpireDays');
+        const dq = document.getElementById('setDefaultDlQuality');
+        const prefs = {
+            storage_limit_gb: cap ? parseInt(cap.value, 10) : 4,
+            auto_delete_watched: autoDel ? Boolean(autoDel.checked) : true,
+            auto_expire_days: exp ? parseInt(exp.value, 10) : 7,
+            default_quality: dq ? dq.value : '720p'
+        };
+        try {
+            const resp = await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ download_prefs: prefs })
+            });
+            const data = await resp.json();
+            if (data && data.success) {
+                userSettingsState = data;
+                renderStorageSummaryUi(data.storage, data.download_prefs);
+                showToast('Download storage settings updated', 'ok');
+            }
+        } catch (e) {
+            showToast('Settings update failed', 'err');
+        }
+    }
+
+    async function clearAllOfflineDownloads() {
+        if (!confirm('Saari offline downloaded movies delete karein?')) return;
+        try {
+            const resp = await fetch('/api/downloads/action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'clear_all' })
+            });
+            const data = await resp.json();
+            if (data && data.success) {
+                offlineDownloadsList = data.items || [];
+                renderStorageSummaryUi(data.storage, data.prefs);
+                renderDownloadsList();
+                showToast('All offline files cleared', 'ok');
+            }
+        } catch (e) {
+            showToast('Clear failed', 'err');
+        }
+    }
+
+    function _inferQualityTag(text) {
+        const t = String(text || '');
+        let res = 'HD';
+        if (/2160p|4k|uhd/i.test(t)) res = '4K 2160p';
+        else if (/1080p/i.test(t)) res = '1080p';
+        else if (/720p/i.test(t)) res = '720p';
+        else if (/480p/i.test(t)) res = '480p';
+        const mSz = t.match(/(\d+(?:\.\d+)?\s*(?:GB|MB))/i);
+        return { res, size: mSz ? mSz[1].toUpperCase() : '' };
+    }
+
+    function _detectLangsInText(text) {
+        const t = String(text || '').toLowerCase();
+        const found = [];
+        if (/dual\s*audio/i.test(t)) found.push('Dual Audio');
+        [['Hindi', /\bhindi\b|\bhin\b/i], ['English', /\benglish\b|\beng\b/i], ['Tamil', /\btamil\b/i], ['Telugu', /\btelugu\b/i], ['Punjabi', /\bpunjabi\b/i], ['Bengali', /\bbengali\b/i], ['Malayalam', /\bmalayalam\b/i], ['Kannada', /\bkannada\b/i]].forEach(([lbl, rg]) => {
+            if (rg.test(t) && !found.includes(lbl)) found.push(lbl);
+        });
+        return found;
+    }
+
+    function openDownloadPicker(cfg) {
+        const options = (cfg && cfg.options && cfg.options.length) ? cfg.options : [];
+        if (!options.length) {
+            showToast('Download karne ke liye koi direct link nahi mila', 'err');
+            return;
+        }
+        const prefQ = String((userSettingsState.download_prefs && userSettingsState.download_prefs.default_quality) || '720p').toLowerCase();
+        const prefLang = String((userSettingsState.profile && userSettingsState.profile.preferred_language) || 'Auto');
+
+        let bestIdx = 0;
+        let bestScore = -1;
+        options.forEach((o, i) => {
+            const lbl = String(o.label || '').toLowerCase();
+            let sc = 0;
+            if (prefQ !== 'ask' && lbl.includes(prefQ)) sc += 4;
+            else if (lbl.includes('720p')) sc += 2;
+            else if (lbl.includes('480p')) sc += 2;
+            if (prefLang !== 'Auto' && lbl.includes(prefLang.toLowerCase())) sc += 5;
+            if (sc > bestScore) { bestScore = sc; bestIdx = i; }
+        });
+
+        dlPickerState = {
+            title: cleanDisplayTitle((cfg && cfg.title) || activeTitle || 'Movie'),
+            poster: (cfg && cfg.poster) || (currentMovieMeta ? currentMovieMeta.thumbnail : '') || '',
+            ep_label: (cfg && cfg.ep_label) || '',
+            media_key: (cfg && cfg.media_key) || '',
+            parent_key: (cfg && cfg.parent_key) || '',
+            options,
+            selectedIdx: bestIdx,
+            selectedLang: prefLang || 'Auto'
+        };
+
+        const titleEl = document.getElementById('dlPickerTitle');
+        if (titleEl) titleEl.textContent = dlPickerState.ep_label ? `${dlPickerState.title} • ${dlPickerState.ep_label}` : dlPickerState.title;
+        const pImg = document.getElementById('dlPickerPoster');
+        if (pImg) {
+            if (dlPickerState.poster) { pImg.src = dlPickerState.poster; pImg.style.display = 'block'; }
+            else pImg.style.display = 'none';
+        }
+        renderDownloadPickerChoices();
+
+        const st = userSettingsState.storage || {};
+        const dp = userSettingsState.download_prefs || {};
+        const limLabel = Number(dp.storage_limit_gb) > 0 ? `${dp.storage_limit_gb} GB` : 'Unlimited';
+        const hintEl = document.getElementById('dlPickerStorageHint');
+        if (hintEl) {
+            hintEl.textContent = `🔒 Private App Storage: ${fmtBytes(st.used_bytes || 0)} / ${limLabel} used • Gallery/Files se hidden${dp.auto_delete_watched ? ' • Watched hone par auto-delete' : ''}`;
+        }
+        const ov = document.getElementById('downloadPickerModal');
+        if (ov) ov.classList.add('open');
+    }
+
+    function closeDownloadPicker() {
+        const ov = document.getElementById('downloadPickerModal');
+        if (ov) ov.classList.remove('open');
+    }
+
+    function renderDownloadPickerChoices() {
+        const qWrap = document.getElementById('dlPickerQualities');
+        const lWrap = document.getElementById('dlPickerLangs');
+        if (qWrap) {
+            qWrap.innerHTML = '';
+            dlPickerState.options.forEach((opt, i) => {
+                const tag = _inferQualityTag(opt.label);
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'dl-q-pill' + (i === dlPickerState.selectedIdx ? ' active' : '');
+                btn.style.cssText = 'text-align:left;display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;';
+                const hintTag = /480p/i.test(tag.res) ? 'Low Size' : (/720p/i.test(tag.res) ? 'Balanced HD' : '');
+                const szText = opt.size_label || tag.size || hintTag || 'Direct';
+                btn.innerHTML = `<span style="font-weight:800;overflow:hidden;text-overflow:ellipsis;">${esc(opt.label)}</span><span style="font-size:0.72rem;opacity:0.9;white-space:nowrap;">${esc(szText)}</span>`;
+                btn.onclick = () => { dlPickerState.selectedIdx = i; renderDownloadPickerChoices(); };
+                qWrap.appendChild(btn);
+            });
+        }
+        if (lWrap) {
+            const selOpt = dlPickerState.options[dlPickerState.selectedIdx] || {};
+            const detected = _detectLangsInText(selOpt.label || dlPickerState.title);
+            const langs = ['Auto'];
+            detected.forEach(l => { if (!langs.includes(l)) langs.push(l); });
+            ['Hindi', 'English', 'Dual Audio', 'Tamil', 'Telugu', 'Punjabi', 'Bengali'].forEach(l => {
+                if (!langs.includes(l)) langs.push(l);
+            });
+            lWrap.innerHTML = '';
+            langs.forEach(lg => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'dl-lang-pill' + (dlPickerState.selectedLang === lg ? ' active' : '');
+                btn.textContent = lg === 'Auto' ? 'Auto (Default)' : lg;
+                btn.onclick = () => {
+                    dlPickerState.selectedLang = lg;
+                    if (lg !== 'Auto' && dlPickerState.options.length > 1) {
+                        const matchIdx = dlPickerState.options.findIndex(o => String(o.label || '').toLowerCase().includes(lg.toLowerCase()));
+                        if (matchIdx >= 0) dlPickerState.selectedIdx = matchIdx;
+                    }
+                    renderDownloadPickerChoices();
+                };
+                lWrap.appendChild(btn);
+            });
+        }
+    }
+
+    function openDownloadPickerFromDetails() {
+        const list = (currentDetailsQualities && currentDetailsQualities.length)
+            ? currentDetailsQualities.map(q => ({
+                label: q.title,
+                hdhub_link: q.link,
+                size_label: _inferQualityTag(q.title).size,
+                quality_label: _inferQualityTag(q.title).res
+            }))
+            : [];
+        if (!list.length) {
+            const sel = document.getElementById('qualitySelect');
+            if (sel && sel.value) {
+                list.push({ label: sel.options[sel.selectedIndex]?.textContent || 'Selected Quality', hdhub_link: sel.value, size_label: '', quality_label: 'HD' });
+            }
+        }
+        openDownloadPicker({
+            title: currentMovieMeta ? currentMovieMeta.title : (document.getElementById('movieCardTitle')?.textContent || 'Movie'),
+            poster: currentMovieMeta ? currentMovieMeta.thumbnail : '',
+            media_key: currentMovieMeta ? (currentMovieMeta.permalink || currentMovieMeta.title) : '',
+            options: list
+        });
+    }
+
+    function openDownloadPickerForEpisode(sIdx, epIdx) {
+        const season = (activeSeriesData && activeSeriesData.seasons || [])[sIdx];
+        const ep = season && (season.episodes || [])[epIdx];
+        if (!ep) return;
+        openDownloadPicker({
+            title: (currentMovieMeta ? currentMovieMeta.title : activeTitle) || 'Web Series',
+            ep_label: ep.ep_label,
+            poster: currentMovieMeta ? currentMovieMeta.thumbnail : '',
+            media_key: ep.link,
+            parent_key: currentMovieMeta ? (currentMovieMeta.permalink || '') : '',
+            options: [{
+                label: `${ep.ep_label} • ${ep.title}`,
+                hdhub_link: ep.link,
+                size_label: ep.size || '',
+                quality_label: _inferQualityTag(ep.title).res
+            }]
+        });
+    }
+
+    function openDownloadPickerForZipEp(zipIdx) {
+        const ep = activeZipEntries[zipIdx];
+        if (!ep) return;
+        openDownloadPicker({
+            title: cleanDisplayTitle(activeZipTitle || activeTitle || 'Episode'),
+            ep_label: ep.name,
+            poster: currentMovieMeta ? currentMovieMeta.thumbnail : '',
+            media_key: ep.sid || ep.name,
+            parent_key: currentMovieMeta ? (currentMovieMeta.permalink || '') : '',
+            options: [{
+                label: ep.name,
+                stream_url: ep.stream_url,
+                seek_url: ep.seek_url || '',
+                base_offset: ep.base_offset || 0,
+                sub_size: ep.sub_size !== undefined ? ep.sub_size : null,
+                compress_method: ep.compress_method || 0,
+                zip_index: zipIdx,
+                size_label: ep.size || '',
+                quality_label: _inferQualityTag(ep.name).res
+            }]
+        });
+    }
+
+    function openDownloadPickerFromActive() {
+        if (activeZipEntries && activeZipEntries.length && activeZipIndex >= 0) {
+            openDownloadPickerForZipEp(activeZipIndex);
+            return;
+        }
+        const opts = [];
+        const directMirrors = (activeResolvedMirrors || []).filter(m => m && m.alive && m.url && !String(m.url).includes('.m3u8'));
+        if (activeStreamUrl && !String(activeStreamUrl).includes('.m3u8')) {
+            opts.push({
+                label: `${activeTitle || 'Current Stream'} (Best Server)`,
+                stream_url: activeStreamUrl,
+                seek_url: activeSeekUrl || '',
+                base_offset: activeBaseOff || 0,
+                sub_size: activeSubSize !== undefined ? activeSubSize : null,
+                compress_method: activeCompressMethod || 0,
+                backup_urls: directMirrors.map(m => m.url),
+                hdhub_link: activeSourceLink || '',
+                size_label: document.getElementById('resSize')?.textContent?.replace(/^Size:\s*/i, '') || '',
+                quality_label: inferQualityLabel(activeTitle, activeCompressMethod)
+            });
+        }
+        directMirrors.forEach(m => {
+            if (m.url !== activeStreamUrl) {
+                opts.push({
+                    label: `${cleanDisplayTitle(m.name)} • ${inferQualityLabel(activeTitle, 0)}`,
+                    stream_url: m.url,
+                    seek_url: m.seek_url || activeSeekUrl || '',
+                    hdhub_link: activeSourceLink || '',
+                    size_label: document.getElementById('resSize')?.textContent?.replace(/^Size:\s*/i, '') || '',
+                    quality_label: inferQualityLabel(activeTitle, 0)
+                });
+            }
+        });
+        if (!opts.length && activeSourceLink) {
+            opts.push({
+                label: activeTitle || 'Resolve & Download',
+                hdhub_link: activeSourceLink,
+                size_label: '',
+                quality_label: inferQualityLabel(activeTitle, activeCompressMethod)
+            });
+        }
+        openDownloadPicker({
+            title: activeTitle || 'StreamHub Movie',
+            ep_label: activeEpLabel || '',
+            poster: currentMovieMeta ? currentMovieMeta.thumbnail : '',
+            media_key: activeMediaKey || activeSid || activeTitle,
+            parent_key: activeParentKey || '',
+            options: opts
+        });
+    }
+
+    async function confirmStartDownload() {
+        const opt = dlPickerState.options[dlPickerState.selectedIdx];
+        if (!opt) return;
+        const btn = document.getElementById('btnStartDownloadConfirm');
+        if (btn) { btn.disabled = true; btn.textContent = 'Starting download...'; }
+        try {
+            const payload = {
+                title: dlPickerState.title,
+                ep_label: dlPickerState.ep_label,
+                poster: dlPickerState.poster,
+                media_key: dlPickerState.media_key || opt.hdhub_link || dlPickerState.title,
+                parent_key: dlPickerState.parent_key,
+                quality_label: opt.quality_label || _inferQualityTag(opt.label).res,
+                size_label: opt.size_label || '',
+                language: dlPickerState.selectedLang || 'Auto',
+                hdhub_link: opt.hdhub_link || '',
+                stream_url: opt.stream_url || '',
+                seek_url: opt.seek_url || '',
+                base_offset: opt.base_offset || 0,
+                sub_size: opt.sub_size !== undefined ? opt.sub_size : null,
+                compress_method: opt.compress_method || 0,
+                backup_urls: opt.backup_urls || [],
+                zip_index: opt.zip_index !== undefined ? opt.zip_index : -1
+            };
+            const resp = await fetch('/api/downloads/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await resp.json();
+            if (!data || !data.success) {
+                showToast(data.error || 'Download start nahi hua', 'err');
+                return;
+            }
+            closeDownloadPicker();
+            await refreshDownloadsState(true);
+            showToast(data.message || 'Download started! Tap to view', 'ok', () => openDownloadsModal());
+        } catch (e) {
+            showToast('Download request error: ' + e.message, 'err');
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '⬇ Start Private Download'; }
+        }
+    }
+
+    async function openDownloadsModal() {
+        const ov = document.getElementById('downloadsModalOverlay');
+        if (ov) ov.classList.add('open');
+        await refreshDownloadsState(true);
+    }
+
+    function closeDownloadsModal() {
+        const ov = document.getElementById('downloadsModalOverlay');
+        if (ov) ov.classList.remove('open');
+        const activeCnt = Number((userSettingsState.storage && userSettingsState.storage.active_count) || 0);
+        if (activeCnt === 0 && offlinePollTimer) {
+            clearInterval(offlinePollTimer);
+            offlinePollTimer = null;
+        }
+    }
+
+    function _syncDownloadPoller(activeCount) {
+        const modalOpen = document.getElementById('downloadsModalOverlay')?.classList.contains('open');
+        if (activeCount > 0 || modalOpen) {
+            if (!offlinePollTimer) {
+                offlinePollTimer = setInterval(() => refreshDownloadsState(false), modalOpen ? 1000 : 2500);
+            }
+        } else if (offlinePollTimer) {
+            clearInterval(offlinePollTimer);
+            offlinePollTimer = null;
+        }
+    }
+
+    async function refreshDownloadsState() {
+        try {
+            const resp = await fetch('/api/downloads');
+            const data = await resp.json();
+            if (data && data.success) {
+                offlineDownloadsList = data.items || [];
+                userSettingsState.storage = data.storage || userSettingsState.storage;
+                if (data.prefs) userSettingsState.download_prefs = data.prefs;
+                renderStorageSummaryUi(data.storage, data.prefs);
+                renderDownloadsList();
+                _syncDownloadPoller(Number((data.storage && data.storage.active_count) || 0));
+            }
+        } catch (e) {}
+    }
+
+    function renderDownloadsList() {
+        const wrap = document.getElementById('downloadsListWrap');
+        if (!wrap) return;
+        if (!offlineDownloadsList.length) {
+            wrap.innerHTML = `<div class="settings-card" style="text-align:center;padding:28px 16px;">
+                <div style="font-size:2rem;margin-bottom:8px;">📥</div>
+                <div style="font-size:0.95rem;font-weight:800;color:#fff;margin-bottom:4px;">Koi Offline Movie Nahi Hai</div>
+                <div style="font-size:0.78rem;color:var(--text-muted);line-height:1.45;">Kisi bhi movie ya web series par jakar <b>⬇ Download</b> button dabayein — bina net ke kabhi bhi dekhein!</div>
+            </div>`;
+            return;
+        }
+        wrap.innerHTML = '';
+        offlineDownloadsList.forEach(item => {
+            const card = document.createElement('div');
+            card.className = 'dl-item-card';
+            const pct = Number(item.pct || 0);
+            const spd = Number(item.speed_bps || 0);
+            const spdTxt = spd > 0 ? ` • ${fmtBytes(spd)}/s` : '';
+            const st = item.status || 'paused';
+            let statusLine = '';
+            let actionsHtml = '';
+            if (st === 'completed') {
+                const expTxt = (item.expires_in_days !== null && item.expires_in_days !== undefined) ? ` • ${item.expires_in_days}d left` : '';
+                const watchTxt = Number(item.last_watched_pct || 0) >= 5 ? ` • Watched ${Math.round(item.last_watched_pct)}%` : '';
+                statusLine = `<span style="color:#6ee7b7;font-weight:700;">Ready Offline (${fmtBytes(item.total_bytes || item.downloaded_bytes)})</span>${watchTxt}${expTxt}`;
+                actionsHtml = `
+                    <button type="button" class="btn-sm btn-vlc-sm" onclick="playOfflineDownload('${esc(item.id)}')">▶ Play Offline</button>
+                    <button type="button" class="btn-sm btn-copy-sm" onclick="downloadAction('${esc(item.id)}','delete')">🗑️</button>
+                `;
+            } else if (st === 'downloading' || st === 'queued') {
+                statusLine = `<span style="color:#93c5fd;font-weight:700;">${st === 'queued' ? 'Connecting...' : `Downloading ${pct.toFixed(1)}%`}</span> • ${fmtBytes(item.downloaded_bytes)} / ${item.total_bytes > 0 ? fmtBytes(item.total_bytes) : '...'}${spdTxt}`;
+                actionsHtml = `
+                    <button type="button" class="btn-sm btn-indigo-sm" onclick="downloadAction('${esc(item.id)}','pause')">⏸ Pause</button>
+                    <button type="button" class="btn-sm btn-copy-sm" onclick="downloadAction('${esc(item.id)}','delete')">✕</button>
+                `;
+            } else {
+                const isErr = st === 'error';
+                statusLine = `<span style="color:${isErr ? '#fca5a5' : '#fde68a'};font-weight:700;">${isErr ? 'Error' : 'Paused'} (${pct.toFixed(1)}%)</span> • ${fmtBytes(item.downloaded_bytes)}${item.error ? ' — ' + esc(item.error) : ''}`;
+                actionsHtml = `
+                    <button type="button" class="btn-sm btn-vlc-sm" onclick="downloadAction('${esc(item.id)}','resume')">▶ Resume</button>
+                    <button type="button" class="btn-sm btn-copy-sm" onclick="downloadAction('${esc(item.id)}','delete')">🗑️</button>
+                `;
+            }
+            const imgHtml = item.poster
+                ? `<img class="dl-poster" src="${esc(item.poster)}" alt="">`
+                : `<div class="dl-poster" style="display:grid;place-items:center;font-size:1.3rem;">🎬</div>`;
+            const progBar = (st !== 'completed')
+                ? `<div class="storage-bar-track" style="height:6px;margin:7px 0;"><div class="storage-bar-fill" style="width:${pct}%"></div></div>`
+                : '';
+
+            card.innerHTML = `
+                ${imgHtml}
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:0.88rem;font-weight:800;color:#fff;line-height:1.25;">${esc(item.title)}${item.ep_label ? ' &bull; ' + esc(item.ep_label) : ''}</div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:5px 0;">
+                        <span class="badge" style="font-size:0.68rem;padding:2px 7px;">${esc(item.quality_label || 'HD')}</span>
+                        <span class="badge badge-gold" style="font-size:0.68rem;padding:2px 7px;">Audio: ${esc(item.language || 'Auto')}</span>
+                    </div>
+                    <div style="font-size:0.74rem;color:var(--text-muted);line-height:1.35;">${statusLine}</div>
+                    ${progBar}
+                    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:8px;">${actionsHtml}</div>
+                </div>
+            `;
+            wrap.appendChild(card);
+        });
+    }
+
+    async function downloadAction(dlId, action) {
+        try {
+            const resp = await fetch('/api/downloads/action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: dlId, action })
+            });
+            const data = await resp.json();
+            if (data && data.success) {
+                offlineDownloadsList = data.items || [];
+                renderStorageSummaryUi(data.storage, data.prefs);
+                renderDownloadsList();
+                _syncDownloadPoller(Number((data.storage && data.storage.active_count) || 0));
+            } else if (data && data.error) {
+                showToast(data.error, 'err');
+            }
+        } catch (e) {
+            showToast('Action error: ' + e.message, 'err');
+        }
+    }
+
+    async function playOfflineDownload(dlId) {
+        const item = offlineDownloadsList.find(x => x.id === dlId);
+        if (!item) return;
+        const p = (item.media_key && progressMap[item.media_key]) ? progressMap[item.media_key] : null;
+        const startSec = (p && p.position_sec >= 10 && p.pct < 95) ? Math.floor(p.position_sec) : 0;
+        const fullTitle = item.ep_label ? `${item.title} • ${item.ep_label}` : item.title;
+        const payload = {
+            offline_id: item.id,
+            title: fullTitle,
+            audio_track: item.preferred_audio_track || 1,
+            sub_track: 'auto',
+            start_time: startSec,
+            media_key: item.media_key || item.id,
+            parent_key: item.parent_key || '',
+            ep_label: item.ep_label || ''
+        };
+        if (isAndroidApp()) {
+            launchAndroidPlayerWithPayload(payload, false);
+            return;
+        }
+        try {
+            const resp = await fetch('/api/play_inbuilt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const d = await resp.json();
+            if (d && d.success) {
+                showToast('Offline playback started!', 'ok');
+            } else {
+                const localUrl = window.location.origin + '/api/offline_stream?id=' + encodeURIComponent(item.id);
+                window.open(localUrl, '_blank');
+            }
+        } catch (e) {
+            showToast('Offline player error: ' + e.message, 'err');
+        }
+    }
+
     let pendingUpdateInfo = null;
     let updatePollTimer = null;
 
-    function openUpdateModal() {
+    function openUpdateModal(fromSettings) {
         const ov = document.getElementById('updateModalOverlay');
         if (ov) ov.classList.add('open');
+        const bk = document.getElementById('btnUpdateBackToSettings');
+        if (bk) bk.style.display = (fromSettings === false) ? 'inline-flex' : 'inline-flex';
         checkAppUpdate(true, true);
     }
 
@@ -7928,7 +9051,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
             const envLabel = onAndroid
                 ? ('Android APK' + (data.ota_active ? ' (Instant OTA)' : ''))
                 : (data.frozen ? 'Desktop App (.exe)' : 'Python Mode');
-            meta.textContent = `v${data.version || '2.4.0'} • ${envLabel}${onAndroid ? '' : (' • ' + (data.libvlc_ready ? '4K libVLC Ready' : 'Web Only'))}`;
+            meta.textContent = `v${data.version || '2.5.0'} • ${envLabel}${onAndroid ? '' : (' • ' + (data.libvlc_ready ? '4K libVLC Ready' : 'Web Only'))}`;
         }
         if (inp && !inp.value && data.update_url) inp.value = data.update_url;
         if (box) {
@@ -8099,10 +9222,28 @@ html, body { max-width: 100%; overflow-x: hidden; }
                         chip.classList.add('active');
                     } else {
                         chip.textContent = isAndroidApp()
-                            ? `v${data.version} • Settings & Updates`
+                            ? `v${data.version} • Settings`
                             : `v${data.version} • ${data.libvlc_ready ? 'libVLC Ready' : 'Web Mode'}`;
                         chip.classList.remove('active');
                     }
+                }
+                const setUpdBadge = document.getElementById('settingsUpdateBadge');
+                const setUpdSub = document.getElementById('settingsUpdateSub');
+                if (setUpdBadge) {
+                    if (hasUpd) {
+                        setUpdBadge.textContent = `⬆ New v${data.latest_version}`;
+                        setUpdBadge.style.background = 'rgba(16,185,129,0.22)';
+                        setUpdBadge.style.color = '#6ee7b7';
+                    } else {
+                        setUpdBadge.textContent = `Up to Date • v${data.version}`;
+                        setUpdBadge.style.background = 'rgba(255,255,255,0.12)';
+                        setUpdBadge.style.color = '#e2e8f0';
+                    }
+                }
+                if (setUpdSub) {
+                    setUpdSub.textContent = hasUpd
+                        ? `Naya update v${data.latest_version} available hai — tap karke install karein`
+                        : `Installed: v${data.version} • GitHub auto-update active`;
                 }
                 if (navPill) {
                     if (hasUpd) {
@@ -8120,10 +9261,10 @@ html, body { max-width: 100%; overflow-x: hidden; }
             else if (silentBg) {
                 if (data && data.update_available) {
                     pendingUpdateInfo = data;
-                    showToast(`⬆ New StreamHub v${data.latest_version} available! Settings me jakar update karein`, 'ok', () => openUpdateModal());
+                    showToast(`⬆ New StreamHub v${data.latest_version} available! Settings me jakar update karein`, 'ok', () => openUpdateModal(false));
                 }
             } else if (manual) {
-                showToast(data.message || `StreamHub v${data.version || '2.4.1'} active`);
+                showToast(data.message || `StreamHub v${data.version || '2.5.0'} active`);
             }
         } catch (e) {
             if (inModal && box) box.textContent = 'Update check error';
@@ -8558,6 +9699,77 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
                     self.wfile.write(tail)
             except Exception:
                 pass
+
+    def _stream_offline_file(self, qp):
+        dl_id = (qp.get('id') or [''])[0].strip()
+        if not dl_id:
+            self.send_response(400); self.end_headers(); return
+        entry = _get_offline_entry(dl_id)
+        if not entry or entry.get('status') != 'completed':
+            self.send_response(404); self.end_headers()
+            self.wfile.write(b'Offline movie not found'); return
+        fpath = _offline_item_path(entry)
+        if not fpath or not os.path.isfile(fpath):
+            self.send_response(404); self.end_headers()
+            self.wfile.write(b'Offline file missing on disk'); return
+
+        try:
+            self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            self.connection.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1024 * 1024)
+        except Exception:
+            pass
+
+        total_sz = os.path.getsize(fpath)
+        range_hdr = self.headers.get('Range', '')
+        start_byte = 0
+        end_byte = max(0, total_sz - 1) if total_sz > 0 else 0
+        is_partial = False
+        if range_hdr and total_sz > 0:
+            m_sfx = re.search(r'bytes=-(\d+)$', range_hdr)
+            m_rng = re.search(r'bytes=(\d+)-(\d*)', range_hdr)
+            if m_sfx:
+                sfx = int(m_sfx.group(1))
+                start_byte = max(0, total_sz - sfx)
+                end_byte = total_sz - 1
+                is_partial = True
+            elif m_rng:
+                start_byte = int(m_rng.group(1))
+                if m_rng.group(2):
+                    end_byte = min(int(m_rng.group(2)), total_sz - 1)
+                is_partial = True
+
+        if total_sz > 0 and start_byte >= total_sz:
+            self.send_response(416)
+            self.send_header('Content-Range', f'bytes */{total_sz}')
+            self.end_headers()
+            return
+
+        content_len = (end_byte - start_byte + 1) if total_sz > 0 else 0
+        ctype = 'video/mp4' if fpath.lower().endswith('.mp4') else 'video/x-matroska'
+        self.send_response(206 if is_partial else 200)
+        self.send_header('Content-Type', ctype)
+        self.send_header('Accept-Ranges', 'bytes')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Content-Length', str(content_len))
+        if is_partial:
+            self.send_header('Content-Range', f'bytes {start_byte}-{end_byte}/{total_sz}')
+        self.end_headers()
+
+        _offline_stream_enter(dl_id)
+        try:
+            with open(fpath, 'rb') as fp:
+                fp.seek(start_byte)
+                remaining = content_len
+                while remaining > 0:
+                    chunk = fp.read(min(262144, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+            pass
+        finally:
+            _offline_stream_exit(dl_id)
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -9177,6 +10389,19 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(content)
             return
 
+        # User Settings & Private Offline Downloads APIs
+        if path == '/api/settings':
+            self._json(get_user_settings())
+            return
+
+        if path == '/api/downloads':
+            self._json(list_offline_downloads())
+            return
+
+        if path == '/api/offline_stream':
+            self._stream_offline_file(qp)
+            return
+
         # Frontend App
         if path in ('/', '/index.html'):
             self.send_response(200)
@@ -9279,6 +10504,7 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
                     self._json({"success": True})
                 else:
                     rec = save_playback_progress(body)
+                    note_offline_watch_progress(body, rec)
                     self._json({"success": True, "item": rec})
             except Exception as e:
                 self._json({"success": False, "error": str(e)}, status=500)
@@ -9334,6 +10560,31 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
                     }
                 res = launch_inbuilt_player(body, srv_port=srv_port)
                 self._json(res)
+            except Exception as e:
+                self._json({"success": False, "error": str(e)}, status=500)
+            return
+
+        # User Settings & Private Offline Download Controls
+        if self.path == '/api/settings':
+            try:
+                body = json.loads(raw_body.decode('utf-8')) if raw_body else {}
+                self._json(save_user_settings(body))
+            except Exception as e:
+                self._json({"success": False, "error": str(e)}, status=500)
+            return
+
+        if self.path == '/api/downloads/start':
+            try:
+                body = json.loads(raw_body.decode('utf-8')) if raw_body else {}
+                self._json(start_offline_download(body))
+            except Exception as e:
+                self._json({"success": False, "error": str(e)}, status=500)
+            return
+
+        if self.path == '/api/downloads/action':
+            try:
+                body = json.loads(raw_body.decode('utf-8')) if raw_body else {}
+                self._json(handle_offline_download_action(body))
             except Exception as e:
                 self._json({"success": False, "error": str(e)}, status=500)
             return
@@ -9583,6 +10834,9 @@ def _prewarm_episode_async(hdhub_link):
     threading.Thread(target=_bg, daemon=True).start()
 
 def _prepare_play_target(body, srv_port=None):
+    offline_id = str(body.get('offline_id', '') or '').strip()
+    is_offline_local = False
+    offline_entry = None
     stream_url = body.get('stream_url', '')
     seek_url = body.get('seek_url', '')
     base_off = int(body.get('base_offset', 0) or 0)
@@ -9592,7 +10846,16 @@ def _prepare_play_target(body, srv_port=None):
     sid_val = str(body.get('sid', '') or '')
     backups = body.get('backup_urls') or []
 
-    if (not stream_url or not backups) and sid_val:
+    if offline_id:
+        offline_entry = _get_offline_entry(offline_id)
+        if not offline_entry or offline_entry.get('status') != 'completed':
+            return None, {"success": False, "message": "Offline movie abhi download complete nahi hui hai"}
+        fpath = _offline_item_path(offline_entry)
+        if not fpath or not os.path.isfile(fpath):
+            return None, {"success": False, "message": "Offline video file device storage me nahi mili"}
+        is_offline_local = True
+
+    if not is_offline_local and (not stream_url or not backups) and sid_val:
         sinfo = get_short_stream(sid_val)
         if sinfo:
             if not stream_url:
@@ -9604,7 +10867,7 @@ def _prepare_play_target(body, srv_port=None):
             if not backups:
                 backups = sinfo.get('backup_urls') or []
 
-    if not stream_url and body.get('hdhub_link'):
+    if not is_offline_local and not stream_url and body.get('hdhub_link'):
         resolved = _resolve_episode_cached(body.get('hdhub_link'))
         if not resolved or not resolved.get('success') or not resolved.get('stream_url'):
             err_msg = (resolved or {}).get('error') or 'Next episode ka stream link resolve nahi hua'
@@ -9620,41 +10883,51 @@ def _prepare_play_target(body, srv_port=None):
             if sinfo2:
                 backups = sinfo2.get('backup_urls') or []
 
-    if not stream_url:
+    if not is_offline_local and not stream_url:
         return None, {"success": False, "message": "Stream URL missing"}
 
-    is_hls = (cm == -1 or '.m3u8' in stream_url or 'hdstream4u' in stream_url)
     use_port = int(srv_port or PORT)
-    title_val = str(body.get('title', 'StreamHub Cinema') or 'StreamHub Cinema')
-    start_sec = max(0, int(body.get('start_time', 0) or 0))
-    hls_base_ms = 0
-    hls_intra_sec = 0.0
-    hls_total_ms = 0
-    hls_sid = sid_val
-
-    if is_hls:
-        if not hls_sid:
-            hls_sid = register_short_stream(stream_url, '', 0, None, -1, title_val, 'Adaptive HLS')
-        try:
-            sl = get_hls_session(stream_url, sid=hls_sid).slice_for_ms(start_sec * 1000, sid_override=hls_sid, origin=f"http://127.0.0.1:{use_port}")
-            if sl.get("success"):
-                final_target = sl["playlist_url"]
-                hls_base_ms = int(sl.get("seg_start_ms", 0) or 0)
-                hls_intra_sec = float(sl.get("intra_sec", 0.0) or 0.0)
-                hls_total_ms = int(sl.get("total_ms", 0) or 0)
-            else:
-                final_target = stream_url
-        except Exception:
-            final_target = stream_url
+    if is_offline_local:
+        is_hls = False
+        final_target = f"http://127.0.0.1:{use_port}/api/offline_stream?id={urllib.parse.quote(offline_id, safe='')}"
+        title_val = str(body.get('title') or (offline_entry or {}).get('title') or 'Offline Movie')
+        start_sec = max(0, int(body.get('start_time', 0) or 0))
+        hls_base_ms = 0
+        hls_intra_sec = 0.0
+        hls_total_ms = 0
+        hls_sid = ""
     else:
-        if cm == 0:
-            get_stream_session(stream_url, seek_url, base_off, sub_sz, cm, backup_urls=backups).warm_async()
-        proxy_url = f"http://127.0.0.1:{use_port}/api/stream?url={urllib.parse.quote(stream_url, safe='')}"
-        if seek_url:
-            proxy_url += f"&seek_url={urllib.parse.quote(seek_url, safe='')}"
-        if base_off or sub_sz is not None or cm:
-            proxy_url += f"&off={base_off}&sz={sub_sz or 0}&cm={cm}"
-        final_target = proxy_url
+        is_hls = (cm == -1 or '.m3u8' in stream_url or 'hdstream4u' in stream_url)
+        title_val = str(body.get('title', 'StreamHub Cinema') or 'StreamHub Cinema')
+        start_sec = max(0, int(body.get('start_time', 0) or 0))
+        hls_base_ms = 0
+        hls_intra_sec = 0.0
+        hls_total_ms = 0
+        hls_sid = sid_val
+
+        if is_hls:
+            if not hls_sid:
+                hls_sid = register_short_stream(stream_url, '', 0, None, -1, title_val, 'Adaptive HLS')
+            try:
+                sl = get_hls_session(stream_url, sid=hls_sid).slice_for_ms(start_sec * 1000, sid_override=hls_sid, origin=f"http://127.0.0.1:{use_port}")
+                if sl.get("success"):
+                    final_target = sl["playlist_url"]
+                    hls_base_ms = int(sl.get("seg_start_ms", 0) or 0)
+                    hls_intra_sec = float(sl.get("intra_sec", 0.0) or 0.0)
+                    hls_total_ms = int(sl.get("total_ms", 0) or 0)
+                else:
+                    final_target = stream_url
+            except Exception:
+                final_target = stream_url
+        else:
+            if cm == 0:
+                get_stream_session(stream_url, seek_url, base_off, sub_sz, cm, backup_urls=backups).warm_async()
+            proxy_url = f"http://127.0.0.1:{use_port}/api/stream?url={urllib.parse.quote(stream_url, safe='')}"
+            if seek_url:
+                proxy_url += f"&seek_url={urllib.parse.quote(seek_url, safe='')}"
+            if base_off or sub_sz is not None or cm:
+                proxy_url += f"&off={base_off}&sz={sub_sz or 0}&cm={cm}"
+            final_target = proxy_url
 
     sub_file = str(body.get('subtitle_file', '') or '')
     sub_key = str(body.get('subtitle_key', '') or '')
@@ -9664,10 +10937,10 @@ def _prepare_play_target(body, srv_port=None):
             if s_entry:
                 sub_file = s_entry.get('srt_path', '')
 
-    can_seek = True if is_hls else (cm != 8 and bool(seek_url or is_range_capable(stream_url) or any(is_range_capable(u) for u in (backups or []))))
+    can_seek = True if (is_hls or is_offline_local) else (cm != 8 and bool(seek_url or is_range_capable(stream_url) or any(is_range_capable(u) for u in (backups or []))))
 
     next_ep_obj = body.get('next_episode') if isinstance(body.get('next_episode'), dict) else None
-    if next_ep_obj:
+    if next_ep_obj and not is_offline_local:
         if next_ep_obj.get('hdhub_link'):
             _prewarm_episode_async(next_ep_obj['hdhub_link'])
         elif next_ep_obj.get('stream_url') and int(next_ep_obj.get('compress_method', 0) or 0) == 0:
@@ -9679,6 +10952,9 @@ def _prepare_play_target(body, srv_port=None):
                 0
             ).warm_async()
 
+    pref_track = int(body.get('audio_track') or (offline_entry or {}).get('preferred_audio_track') or 1)
+    media_key_val = str(body.get('media_key', '') or (offline_entry or {}).get('media_key') or offline_id or sid_val or title_val or '')
+
     return {
         "target": final_target,
         "is_hls": is_hls,
@@ -9688,17 +10964,856 @@ def _prepare_play_target(body, srv_port=None):
         "hls_base_ms": hls_base_ms,
         "hls_intra_sec": hls_intra_sec,
         "hls_total_ms": hls_total_ms,
-        "audio_track": int(body.get('audio_track', 1) or 1),
+        "audio_track": pref_track,
         "sub_track": str(body.get('sub_track', 'auto') or 'auto'),
         "title": title_val,
         "start_time": start_sec,
         "server_origin": f"http://127.0.0.1:{use_port}",
-        "media_key": str(body.get('media_key', '') or sid_val or title_val or ''),
-        "parent_key": str(body.get('parent_key', '') or ''),
-        "ep_label": str(body.get('ep_label', '') or ''),
+        "media_key": media_key_val,
+        "parent_key": str(body.get('parent_key', '') or (offline_entry or {}).get('parent_key') or ''),
+        "ep_label": str(body.get('ep_label', '') or (offline_entry or {}).get('ep_label') or ''),
+        "offline_id": offline_id,
         "subtitle_file": sub_file,
         "next_episode": next_ep_obj,
     }, None
+
+# ── User Settings (Profile, Theme, Download Prefs) & Private Offline Downloads ──
+
+_DEFAULT_PROFILE = {
+    "name": "StreamHub User",
+    "avatar": "🎬",
+    "preferred_language": "Auto",
+}
+_DEFAULT_DOWNLOAD_PREFS = {
+    "storage_limit_gb": 4,       # 2, 4, 8, 16, or 0 for Unlimited
+    "auto_delete_watched": True, # Clean up automatically once watched (>=95%)
+    "auto_expire_days": 7,       # 7, 14, 30, or 0 for Never
+    "default_quality": "720p",   # 480p, 720p, 1080p, ask
+}
+_VALID_THEMES = ("netflix", "amoled", "prime", "gold")
+_OFFLINE_RECONCILED = False
+
+def _ensure_offline_dir():
+    os.makedirs(_OFFLINE_DIR, exist_ok=True)
+    nomedia = os.path.join(_OFFLINE_DIR, ".nomedia")
+    if not os.path.exists(nomedia):
+        try:
+            with open(nomedia, 'wb') as f:
+                f.write(b'')
+        except Exception:
+            pass
+
+def _offline_item_path(entry, part=False):
+    fname = os.path.basename(str((entry or {}).get("file_name") or ""))
+    if not fname:
+        return ""
+    if part:
+        fname += ".part"
+    path = os.path.realpath(os.path.join(_OFFLINE_DIR, fname))
+    base = os.path.realpath(_OFFLINE_DIR)
+    if not path.startswith(base):
+        return ""
+    return path
+
+def _offline_stream_enter(dl_id):
+    with _OFFLINE_LOCK:
+        _OFFLINE_ACTIVE_STREAMS[dl_id] = _OFFLINE_ACTIVE_STREAMS.get(dl_id, 0) + 1
+
+def _offline_stream_exit(dl_id):
+    with _OFFLINE_LOCK:
+        cur = _OFFLINE_ACTIVE_STREAMS.get(dl_id, 0) - 1
+        if cur <= 0:
+            _OFFLINE_ACTIVE_STREAMS.pop(dl_id, None)
+        else:
+            _OFFLINE_ACTIVE_STREAMS[dl_id] = cur
+
+def _load_offline_db_unlocked():
+    global _OFFLINE_RECONCILED
+    _ensure_offline_dir()
+    items = []
+    try:
+        if os.path.exists(_OFFLINE_META_FILE):
+            with open(_OFFLINE_META_FILE, 'r', encoding='utf-8') as f:
+                raw = json.load(f)
+            if isinstance(raw, list):
+                items = [x for x in raw if isinstance(x, dict) and x.get("id")]
+    except Exception:
+        items = []
+
+    if not _OFFLINE_RECONCILED:
+        _OFFLINE_RECONCILED = True
+        changed = False
+        for it in items:
+            if it.get("status") in ("downloading", "queued") and it["id"] not in _OFFLINE_ACTIVE_WORKERS:
+                it["status"] = "paused"
+                it["speed_bps"] = 0
+                ppath = _offline_item_path(it, part=True)
+                if ppath and os.path.isfile(ppath):
+                    it["downloaded_bytes"] = os.path.getsize(ppath)
+                changed = True
+        if changed:
+            _save_offline_db_unlocked(items)
+    return items
+
+def _save_offline_db_unlocked(items):
+    _ensure_offline_dir()
+    try:
+        tmp = _OFFLINE_META_FILE + ".tmp"
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(items, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, _OFFLINE_META_FILE)
+    except Exception:
+        pass
+
+def _get_offline_entry(dl_id):
+    with _OFFLINE_LOCK:
+        for it in _load_offline_db_unlocked():
+            if it.get("id") == dl_id:
+                return dict(it)
+    return None
+
+def _update_offline_entry(dl_id, patch):
+    with _OFFLINE_LOCK:
+        items = _load_offline_db_unlocked()
+        for it in items:
+            if it.get("id") == dl_id:
+                it.update(patch)
+                _save_offline_db_unlocked(items)
+                return dict(it)
+    return None
+
+def _parse_size_to_bytes(size_str):
+    s = str(size_str or "").strip()
+    m = re.search(r'(\d+(?:\.\d+)?)\s*(TB|GB|MB|KB)\b', s, re.I)
+    if not m:
+        return 0
+    val = float(m.group(1))
+    unit = m.group(2).upper()
+    mult = {"KB": 1024, "MB": 1024**2, "GB": 1024**3, "TB": 1024**4}.get(unit, 1)
+    return int(val * mult)
+
+def get_user_settings():
+    cfg = _load_app_config()
+    prof = dict(_DEFAULT_PROFILE)
+    if isinstance(cfg.get("profile"), dict):
+        for k in _DEFAULT_PROFILE:
+            if cfg["profile"].get(k) is not None and str(cfg["profile"].get(k)).strip() != "":
+                prof[k] = str(cfg["profile"][k]).strip()[:48]
+    theme = str(cfg.get("theme", "netflix") or "netflix").strip().lower()
+    if theme not in _VALID_THEMES:
+        theme = "netflix"
+    prefs = dict(_DEFAULT_DOWNLOAD_PREFS)
+    if isinstance(cfg.get("download_prefs"), dict):
+        dp = cfg["download_prefs"]
+        try:
+            lim = int(dp.get("storage_limit_gb", prefs["storage_limit_gb"]))
+            if lim in (0, 2, 4, 8, 16):
+                prefs["storage_limit_gb"] = lim
+        except Exception:
+            pass
+        if "auto_delete_watched" in dp:
+            prefs["auto_delete_watched"] = bool(dp["auto_delete_watched"])
+        try:
+            exp = int(dp.get("auto_expire_days", prefs["auto_expire_days"]))
+            if exp in (0, 7, 14, 30):
+                prefs["auto_expire_days"] = exp
+        except Exception:
+            pass
+        dq = str(dp.get("default_quality", prefs["default_quality"]) or "").lower()
+        if dq in ("480p", "720p", "1080p", "ask"):
+            prefs["default_quality"] = dq
+
+    return {
+        "success": True,
+        "version": APP_VERSION,
+        "update_url": _get_effective_update_url()[1],
+        "profile": prof,
+        "theme": theme,
+        "download_prefs": prefs,
+        "storage": get_offline_storage_summary(prefs),
+    }
+
+def save_user_settings(body):
+    if not isinstance(body, dict):
+        return get_user_settings()
+    cur = get_user_settings()
+    updates = {}
+    if isinstance(body.get("profile"), dict):
+        prof = dict(cur["profile"])
+        p_in = body["profile"]
+        if "name" in p_in:
+            nm = str(p_in["name"] or "").strip()[:32]
+            prof["name"] = nm or _DEFAULT_PROFILE["name"]
+        if "avatar" in p_in:
+            av = str(p_in["avatar"] or "").strip()[:8]
+            if av:
+                prof["avatar"] = av
+        if "preferred_language" in p_in:
+            prof["preferred_language"] = str(p_in["preferred_language"] or "Auto").strip()[:24] or "Auto"
+        updates["profile"] = prof
+    if "theme" in body:
+        th = str(body["theme"] or "").strip().lower()
+        if th in _VALID_THEMES:
+            updates["theme"] = th
+    if isinstance(body.get("download_prefs"), dict):
+        dp = dict(cur["download_prefs"])
+        d_in = body["download_prefs"]
+        if "storage_limit_gb" in d_in:
+            try:
+                lim = int(d_in["storage_limit_gb"])
+                if lim in (0, 2, 4, 8, 16):
+                    dp["storage_limit_gb"] = lim
+            except Exception:
+                pass
+        if "auto_delete_watched" in d_in:
+            dp["auto_delete_watched"] = bool(d_in["auto_delete_watched"])
+        if "auto_expire_days" in d_in:
+            try:
+                exp = int(d_in["auto_expire_days"])
+                if exp in (0, 7, 14, 30):
+                    dp["auto_expire_days"] = exp
+            except Exception:
+                pass
+        if "default_quality" in d_in:
+            dq = str(d_in["default_quality"] or "").lower()
+            if dq in ("480p", "720p", "1080p", "ask"):
+                dp["default_quality"] = dq
+        updates["download_prefs"] = dp
+
+    if updates:
+        _save_app_config(updates)
+        if "download_prefs" in updates:
+            # Refresh expiry timestamps on completed downloads if auto_expire_days updated
+            exp_days = int(updates["download_prefs"].get("auto_expire_days", 7) or 0)
+            with _OFFLINE_LOCK:
+                items = _load_offline_db_unlocked()
+                changed = False
+                for it in items:
+                    if it.get("status") == "completed":
+                        comp = float(it.get("completed_at") or it.get("created_at") or time.time())
+                        it["expires_at"] = (comp + exp_days * 86400.0) if exp_days > 0 else 0
+                        changed = True
+                if changed:
+                    _save_offline_db_unlocked(items)
+            _cleanup_offline_downloads()
+    return get_user_settings()
+
+def get_offline_storage_summary(prefs_override=None):
+    _ensure_offline_dir()
+    used = 0
+    try:
+        for fn in os.listdir(_OFFLINE_DIR):
+            if fn == ".nomedia":
+                continue
+            fp = os.path.join(_OFFLINE_DIR, fn)
+            if os.path.isfile(fp):
+                used += os.path.getsize(fp)
+    except Exception:
+        pass
+    if prefs_override is None:
+        cfg = _load_app_config()
+        dp = cfg.get("download_prefs") if isinstance(cfg.get("download_prefs"), dict) else {}
+        try:
+            lim_gb = int(dp.get("storage_limit_gb", _DEFAULT_DOWNLOAD_PREFS["storage_limit_gb"]))
+        except Exception:
+            lim_gb = _DEFAULT_DOWNLOAD_PREFS["storage_limit_gb"]
+    else:
+        lim_gb = int(prefs_override.get("storage_limit_gb", 4))
+    limit_bytes = lim_gb * (1024 ** 3) if lim_gb > 0 else 0
+    active_cnt = 0
+    completed_cnt = 0
+    paused_cnt = 0
+    with _OFFLINE_LOCK:
+        for it in _load_offline_db_unlocked():
+            st = it.get("status")
+            if st in ("downloading", "queued"):
+                active_cnt += 1
+            elif st == "completed":
+                completed_cnt += 1
+            elif st == "paused":
+                paused_cnt += 1
+    return {
+        "used_bytes": used,
+        "limit_gb": lim_gb,
+        "limit_bytes": limit_bytes,
+        "active_count": active_cnt,
+        "completed_count": completed_cnt,
+        "paused_count": paused_cnt,
+        "total_count": active_cnt + completed_cnt + paused_cnt,
+    }
+
+def _delete_offline_files_only(entry):
+    for part_flag in (False, True):
+        fp = _offline_item_path(entry, part=part_flag)
+        if fp and os.path.isfile(fp):
+            try:
+                os.remove(fp)
+            except Exception:
+                pass
+
+def _cleanup_offline_downloads():
+    cfg = _load_app_config()
+    dp = cfg.get("download_prefs") if isinstance(cfg.get("download_prefs"), dict) else {}
+    auto_del_watched = bool(dp.get("auto_delete_watched", _DEFAULT_DOWNLOAD_PREFS["auto_delete_watched"]))
+    try:
+        exp_days = int(dp.get("auto_expire_days", _DEFAULT_DOWNLOAD_PREFS["auto_expire_days"]))
+    except Exception:
+        exp_days = 7
+    now = time.time()
+    removed = 0
+    with _OFFLINE_LOCK:
+        items = _load_offline_db_unlocked()
+        kept = []
+        for it in items:
+            dl_id = it.get("id")
+            if dl_id in _OFFLINE_ACTIVE_WORKERS or _OFFLINE_ACTIVE_STREAMS.get(dl_id, 0) > 0:
+                kept.append(it)
+                continue
+            should_del = False
+            if it.get("status") == "completed":
+                exp_at = float(it.get("expires_at") or 0)
+                if exp_days > 0 and exp_at > 0 and now > exp_at:
+                    should_del = True
+                pct = float(it.get("last_watched_pct") or 0)
+                wd_at = float(it.get("watched_done_at") or 0)
+                if auto_del_watched and pct >= 95.0 and (now - wd_at) >= 10.0:
+                    should_del = True
+            if should_del:
+                _delete_offline_files_only(it)
+                removed += 1
+            else:
+                kept.append(it)
+        if removed:
+            _save_offline_db_unlocked(kept)
+    return removed
+
+def _evict_for_storage(needed_bytes, limit_bytes):
+    if not limit_bytes or limit_bytes <= 0:
+        return True, 0, ""
+    _cleanup_offline_downloads()
+    freed_cnt = 0
+    for _pass in range(2):
+        summary = get_offline_storage_summary()
+        used = int(summary["used_bytes"])
+        if needed_bytes <= 0 and used < limit_bytes:
+            return True, freed_cnt, ""
+        if needed_bytes > 0 and (used + needed_bytes) <= limit_bytes:
+            return True, freed_cnt, ""
+        with _OFFLINE_LOCK:
+            items = _load_offline_db_unlocked()
+            # Prefer deleting watched items (>=85%), oldest completed first
+            candidates = [
+                it for it in items
+                if it.get("status") == "completed"
+                and it.get("id") not in _OFFLINE_ACTIVE_WORKERS
+                and _OFFLINE_ACTIVE_STREAMS.get(it.get("id"), 0) == 0
+                and float(it.get("last_watched_pct") or 0) >= 85.0
+            ]
+            candidates.sort(key=lambda x: float(x.get("completed_at") or x.get("created_at") or 0))
+            if not candidates:
+                break
+            victim = candidates[0]
+            _delete_offline_files_only(victim)
+            items = [it for it in items if it.get("id") != victim.get("id")]
+            _save_offline_db_unlocked(items)
+            freed_cnt += 1
+    lim_gb = round(limit_bytes / (1024 ** 3), 1)
+    return False, freed_cnt, f"Storage Limit ({lim_gb} GB) full hai! My Downloads se purani movie delete karein ya Settings me limit badhayein."
+
+def _offline_match_audio_track(audio_tracks, desired_lang):
+    dl = str(desired_lang or "").strip().lower()
+    if not dl or dl in ("auto", "dual audio", "dual"):
+        return 1
+    aliases = {
+        "hindi": ("hindi", "hin"),
+        "english": ("english", "eng"),
+        "tamil": ("tamil", "tam"),
+        "telugu": ("telugu", "tel"),
+        "malayalam": ("malayalam", "mal"),
+        "kannada": ("kannada", "kan"),
+        "bengali": ("bengali", "ben", "bangla"),
+        "punjabi": ("punjabi", "pan"),
+        "marathi": ("marathi", "mar"),
+    }
+    keys = aliases.get(dl, (dl,))
+    for trk in (audio_tracks or []):
+        name = str(trk.get("name") or "").lower()
+        if any(k in name for k in keys):
+            try:
+                return int(trk.get("id") or 1)
+            except Exception:
+                return 1
+    return 1
+
+def note_offline_watch_progress(body, rec=None):
+    off_id = str((body or {}).get("offline_id") or "").strip()
+    m_key = str((body or {}).get("key") or "").strip()
+    pct = 0.0
+    if isinstance(rec, dict) and rec.get("pct") is not None:
+        pct = float(rec.get("pct") or 0)
+    elif (body or {}).get("duration_sec"):
+        pos = float(body.get("position_sec") or 0)
+        dur = float(body.get("duration_sec") or 0)
+        if dur > 0:
+            pct = round((pos / dur) * 100.0, 1)
+    if not off_id and not m_key:
+        return
+    matched_done = False
+    with _OFFLINE_LOCK:
+        items = _load_offline_db_unlocked()
+        changed = False
+        for it in items:
+            if (off_id and it.get("id") == off_id) or (m_key and it.get("media_key") == m_key):
+                if pct > float(it.get("last_watched_pct") or 0):
+                    it["last_watched_pct"] = pct
+                    changed = True
+                if pct >= 95.0 and not it.get("watched_done_at"):
+                    it["watched_done_at"] = time.time()
+                    changed = True
+                    matched_done = True
+        if changed:
+            _save_offline_db_unlocked(items)
+    if matched_done:
+        cfg = get_user_settings()
+        if cfg["download_prefs"].get("auto_delete_watched"):
+            threading.Timer(12.0, _cleanup_offline_downloads).start()
+
+def _pick_downloadable_url(resolved):
+    """Select best direct MP4/MKV mirror URL from resolve_hubcloud output."""
+    if not isinstance(resolved, dict):
+        return "", "", []
+    su = str(resolved.get("stream_url") or "")
+    sk = str(resolved.get("seek_url") or "")
+    cm = int(resolved.get("compress_method", 0) or 0)
+    mirrors = resolved.get("mirrors") or []
+    backups = []
+    for m in mirrors:
+        if isinstance(m, dict) and m.get("alive") and m.get("url"):
+            u = str(m["url"])
+            if '.m3u8' not in u and 'hdstream4u' not in u:
+                backups.append(u)
+    if su and '.m3u8' not in su and 'hdstream4u' not in su and cm == 0:
+        return su, sk, backups
+    if cm == 0 and backups:
+        alt = backups[0]
+        return alt, (sk or alt), backups[1:]
+    return su, sk, backups
+
+def _probe_mkv_tracks_from_file(fpath):
+    try:
+        sz = os.path.getsize(fpath)
+        if sz < 1024:
+            return []
+        with open(fpath, 'rb') as f:
+            head = f.read(min(2 * 1024 * 1024, sz))
+            tail = b''
+            if sz > len(head):
+                f.seek(max(len(head), sz - 512 * 1024))
+                tail = f.read(512 * 1024)
+        minfo = parse_mkv_media_info(head, tail)
+        return (minfo or {}).get("audio_tracks") or []
+    except Exception:
+        return []
+
+def _run_offline_download_worker(dl_id):
+    with _OFFLINE_LOCK:
+        _OFFLINE_ACTIVE_WORKERS.add(dl_id)
+        _OFFLINE_PAUSED_IDS.discard(dl_id)
+    try:
+        entry = _get_offline_entry(dl_id)
+        if not entry or dl_id in _OFFLINE_DELETED_IDS:
+            return
+
+        _update_offline_entry(dl_id, {"status": "downloading", "error": "", "speed_bps": 0})
+        stream_url = str(entry.get("stream_url") or "")
+        seek_url = str(entry.get("seek_url") or "")
+        base_off = int(entry.get("base_off", 0) or 0)
+        sub_sz = entry.get("sub_size", None)
+        cm = int(entry.get("compress_method", 0) or 0)
+        backups = list(entry.get("backup_urls") or [])
+        hdhub_link = str(entry.get("hdhub_link") or "")
+
+        if not stream_url and hdhub_link:
+            res = _resolve_episode_cached(hdhub_link) or resolve_hubcloud(hdhub_link)
+            if not res or not res.get("success"):
+                _update_offline_entry(dl_id, {
+                    "status": "error",
+                    "error": (res or {}).get("error") or "Download link resolve nahi hua"
+                })
+                return
+            cm = int(res.get("compress_method", 0) or 0)
+            if res.get("is_zip") and res.get("zip_entries") and not entry.get("sub_size"):
+                z_idx = int(entry.get("zip_index", 0) or 0)
+                z_eps = res.get("zip_entries") or []
+                if 0 <= z_idx < len(z_eps):
+                    zep = z_eps[z_idx]
+                    stream_url = zep.get("stream_url", "")
+                    seek_url = zep.get("seek_url", "")
+                    base_off = int(zep.get("base_offset", 0) or 0)
+                    sub_sz = zep.get("sub_size", None)
+                    cm = int(zep.get("compress_method", 0) or 0)
+            else:
+                stream_url, seek_url, backups = _pick_downloadable_url(res)
+                base_off = int(res.get("base_offset", 0) or 0)
+                sub_sz = res.get("sub_size", None)
+            _update_offline_entry(dl_id, {
+                "stream_url": stream_url,
+                "seek_url": seek_url,
+                "base_off": base_off,
+                "sub_size": sub_sz,
+                "compress_method": cm,
+                "backup_urls": backups,
+            })
+
+        if not stream_url or '.m3u8' in stream_url or 'hdstream4u' in stream_url:
+            _update_offline_entry(dl_id, {
+                "status": "error",
+                "error": "Ye mirror live HLS stream hai; direct download ke liye dusri quality ya CDN mirror chunein"
+            })
+            return
+
+        if cm == 8:
+            _update_offline_entry(dl_id, {
+                "status": "error",
+                "error": "Compressed Deflate ZIP entry abhi direct resume download support nahi karti"
+            })
+            return
+
+        # Re-normalize filename extension once true stream_url is resolved
+        ext = ".mp4" if ".mp4" in stream_url.lower() else ".mkv"
+        if not str(entry.get("file_name") or "").endswith(ext):
+            entry = _update_offline_entry(dl_id, {"file_name": f"{dl_id}{ext}"}) or entry
+
+        part_path = _offline_item_path(entry, part=True)
+        final_path = _offline_item_path(entry, part=False)
+        _ensure_offline_dir()
+        downloaded = os.path.getsize(part_path) if os.path.isfile(part_path) else 0
+
+        sub_sz_int = int(sub_sz) if sub_sz is not None and int(sub_sz) > 0 else 0
+        total_bytes = sub_sz_int if sub_sz_int > 0 else int(entry.get("total_bytes") or 0)
+
+        urls_pool = []
+        for u in ([seek_url] + [stream_url] + backups):
+            if u and '.m3u8' not in u and u not in urls_pool:
+                urls_pool.append(u)
+
+        cfg = get_user_settings()
+        limit_bytes = int(cfg["download_prefs"].get("storage_limit_gb", 4) or 0) * (1024 ** 3)
+        remaining_est = max(0, total_bytes - downloaded) if total_bytes > 0 else _parse_size_to_bytes(entry.get("size_label"))
+        ok_cap, _, cap_err = _evict_for_storage(remaining_est, limit_bytes)
+        if not ok_cap:
+            _update_offline_entry(dl_id, {"status": "error", "error": cap_err, "speed_bps": 0})
+            return
+
+        url_idx = 0
+        retries = 0
+        last_ui_ts = time.time()
+        speed_ema = 0.0
+        chunk_window_bytes = 0
+        chunk_window_t0 = time.time()
+
+        while True:
+            if dl_id in _OFFLINE_DELETED_IDS:
+                _delete_offline_files_only(entry)
+                return
+            if dl_id in _OFFLINE_PAUSED_IDS:
+                _update_offline_entry(dl_id, {"status": "paused", "downloaded_bytes": downloaded, "speed_bps": 0})
+                return
+            if total_bytes > 0 and downloaded >= total_bytes:
+                break
+
+            cur_url = urls_pool[url_idx % len(urls_pool)]
+            req_start = base_off + downloaded
+            if sub_sz_int > 0:
+                req_end = base_off + sub_sz_int - 1
+                rng_hdr = f"bytes={req_start}-{req_end}"
+            else:
+                rng_hdr = f"bytes={req_start}-"
+
+            try:
+                resp, st = open_upstream_range(cur_url, range_hdr=rng_hdr, hedges=(2, 5, 8), timeout=18)
+                with resp:
+                    if st not in (200, 206):
+                        raise RuntimeError(f"HTTP {st}")
+                    if st == 200 and downloaded > 0:
+                        # Upstream ignored Range header; restart cleanly at 0 for direct file
+                        if base_off > 0:
+                            raise RuntimeError("ZIP server rejected byte range")
+                        downloaded = 0
+                        with open(part_path, 'wb'):
+                            pass
+
+                    if total_bytes <= 0:
+                        cr = resp.headers.get('Content-Range', '')
+                        m_cr = re.search(r'/(\d+)$', cr)
+                        if m_cr:
+                            total_bytes = int(m_cr.group(1))
+                        elif resp.headers.get('Content-Length'):
+                            cl = int(resp.headers['Content-Length'])
+                            total_bytes = cl if (st == 200 or downloaded == 0) else (downloaded + cl)
+                        if total_bytes > 0:
+                            ok_cap2, _, cap_err2 = _evict_for_storage(max(0, total_bytes - downloaded), limit_bytes)
+                            if not ok_cap2:
+                                _update_offline_entry(dl_id, {"status": "error", "error": cap_err2, "total_bytes": total_bytes})
+                                return
+                            _update_offline_entry(dl_id, {"total_bytes": total_bytes})
+
+                    mode = 'ab' if (downloaded > 0 and os.path.isfile(part_path)) else 'wb'
+                    with open(part_path, mode) as out_f:
+                        retries = 0
+                        while True:
+                            if dl_id in _OFFLINE_DELETED_IDS:
+                                out_f.close()
+                                _delete_offline_files_only(entry)
+                                return
+                            if dl_id in _OFFLINE_PAUSED_IDS:
+                                out_f.flush()
+                                _update_offline_entry(dl_id, {
+                                    "status": "paused",
+                                    "downloaded_bytes": downloaded,
+                                    "total_bytes": total_bytes,
+                                    "speed_bps": 0,
+                                })
+                                return
+
+                            to_read = 262144
+                            if total_bytes > 0:
+                                left = total_bytes - downloaded
+                                if left <= 0:
+                                    break
+                                to_read = min(to_read, left)
+
+                            buf = resp.read(to_read)
+                            if not buf:
+                                break
+                            out_f.write(buf)
+                            n = len(buf)
+                            downloaded += n
+                            chunk_window_bytes += n
+
+                            now = time.time()
+                            dt_win = now - chunk_window_t0
+                            if dt_win >= 0.45:
+                                inst_bps = chunk_window_bytes / max(0.05, dt_win)
+                                speed_ema = inst_bps if speed_ema <= 0 else (speed_ema * 0.65 + inst_bps * 0.35)
+                                chunk_window_bytes = 0
+                                chunk_window_t0 = now
+                            if now - last_ui_ts >= 0.55:
+                                out_f.flush()
+                                _update_offline_entry(dl_id, {
+                                    "downloaded_bytes": downloaded,
+                                    "total_bytes": total_bytes,
+                                    "speed_bps": int(speed_ema),
+                                })
+                                last_ui_ts = now
+
+                    if total_bytes <= 0 or downloaded >= total_bytes:
+                        break
+                    raise RuntimeError("Premature stream end")
+            except Exception as ex:
+                retries += 1
+                url_idx += 1
+                if retries > 6:
+                    _update_offline_entry(dl_id, {
+                        "status": "error",
+                        "downloaded_bytes": downloaded,
+                        "total_bytes": total_bytes,
+                        "speed_bps": 0,
+                        "error": f"Download ruka ({ex}) — Resume dabakar continue karein",
+                    })
+                    return
+                time.sleep(min(2.5, 0.4 * retries))
+
+        if os.path.isfile(part_path):
+            if os.path.isfile(final_path):
+                os.remove(final_path)
+            os.replace(part_path, final_path)
+
+        final_sz = os.path.getsize(final_path) if os.path.isfile(final_path) else downloaded
+        tracks = _probe_mkv_tracks_from_file(final_path)
+        pref_trk = _offline_match_audio_track(tracks, entry.get("language"))
+        cfg_now = get_user_settings()
+        exp_days = int(cfg_now["download_prefs"].get("auto_expire_days", 7) or 0)
+        done_ts = time.time()
+        _update_offline_entry(dl_id, {
+            "status": "completed",
+            "downloaded_bytes": final_sz,
+            "total_bytes": final_sz,
+            "speed_bps": 0,
+            "error": "",
+            "audio_tracks": tracks,
+            "preferred_audio_track": pref_trk,
+            "completed_at": done_ts,
+            "expires_at": (done_ts + exp_days * 86400.0) if exp_days > 0 else 0,
+        })
+    except Exception as exc:
+        _update_offline_entry(dl_id, {"status": "error", "error": str(exc), "speed_bps": 0})
+    finally:
+        with _OFFLINE_LOCK:
+            _OFFLINE_ACTIVE_WORKERS.discard(dl_id)
+            _OFFLINE_PAUSED_IDS.discard(dl_id)
+            _OFFLINE_DELETED_IDS.discard(dl_id)
+
+def list_offline_downloads():
+    _cleanup_offline_downloads()
+    cfg = get_user_settings()
+    with _OFFLINE_LOCK:
+        items = _load_offline_db_unlocked()
+        out = []
+        now = time.time()
+        for it in reversed(items):
+            d = dict(it)
+            tot = int(d.get("total_bytes") or 0)
+            dl = int(d.get("downloaded_bytes") or 0)
+            d["pct"] = 100.0 if d.get("status") == "completed" else (round((dl * 100.0) / tot, 1) if tot > 0 else 0.0)
+            exp_at = float(d.get("expires_at") or 0)
+            d["expires_in_days"] = max(0, int((exp_at - now + 86399) // 86400)) if exp_at > now else None
+            out.append(d)
+    return {
+        "success": True,
+        "items": out,
+        "storage": cfg["storage"],
+        "prefs": cfg["download_prefs"],
+    }
+
+def start_offline_download(body):
+    if not isinstance(body, dict):
+        return {"success": False, "error": "Invalid download request"}
+    _ensure_offline_dir()
+    hdhub_link = str(body.get("hdhub_link") or "").strip()
+    stream_url = str(body.get("stream_url") or "").strip()
+    if not hdhub_link and not stream_url:
+        return {"success": False, "error": "Download link missing hai"}
+
+    title = str(body.get("title") or "StreamHub Movie").strip()
+    quality_label = str(body.get("quality_label") or "720p HD").strip()
+    language = str(body.get("language") or get_user_settings()["profile"].get("preferred_language") or "Auto").strip()
+    size_label = str(body.get("size_label") or "").strip()
+    media_key = str(body.get("media_key") or body.get("sid") or hdhub_link or title).strip()
+
+    with _OFFLINE_LOCK:
+        items = _load_offline_db_unlocked()
+        for it in items:
+            same_link = (hdhub_link and it.get("hdhub_link") == hdhub_link) or (stream_url and it.get("stream_url") == stream_url and int(it.get("zip_index", -1)) == int(body.get("zip_index", -1)))
+            if same_link:
+                if it.get("status") == "completed" and os.path.isfile(_offline_item_path(it)):
+                    return {"success": True, "already_downloaded": True, "item": dict(it), "message": "Ye movie/episode pehle se offline saved hai"}
+                if it.get("status") in ("downloading", "queued"):
+                    return {"success": True, "item": dict(it), "message": "Download pehle se chal raha hai"}
+                # Resume existing paused/errored download with updated language if requested
+                it["language"] = language
+                it["status"] = "queued"
+                it["error"] = ""
+                _save_offline_db_unlocked(items)
+                threading.Thread(target=_run_offline_download_worker, args=(it["id"],), daemon=True).start()
+                return {"success": True, "resumed": True, "item": dict(it), "message": "Download resume ho gaya"}
+
+    cfg = get_user_settings()
+    limit_bytes = int(cfg["download_prefs"].get("storage_limit_gb", 4) or 0) * (1024 ** 3)
+    est_bytes = int(body.get("sub_size") or 0) or _parse_size_to_bytes(size_label)
+    ok_cap, _, cap_err = _evict_for_storage(est_bytes, limit_bytes)
+    if not ok_cap:
+        return {"success": False, "error": cap_err}
+
+    dl_id = uuid.uuid4().hex[:12]
+    ext = ".mp4" if ".mp4" in stream_url.lower() else ".mkv"
+    new_item = {
+        "id": dl_id,
+        "title": title,
+        "ep_label": str(body.get("ep_label") or "").strip(),
+        "poster": str(body.get("poster") or "").strip(),
+        "media_key": media_key,
+        "parent_key": str(body.get("parent_key") or "").strip(),
+        "quality_label": quality_label,
+        "size_label": size_label,
+        "language": language,
+        "hdhub_link": hdhub_link,
+        "stream_url": stream_url,
+        "seek_url": str(body.get("seek_url") or "").strip(),
+        "base_off": int(body.get("base_offset", 0) or 0),
+        "sub_size": int(body["sub_size"]) if body.get("sub_size") is not None else None,
+        "compress_method": int(body.get("compress_method", 0) or 0),
+        "backup_urls": list(body.get("backup_urls") or []),
+        "zip_index": int(body.get("zip_index", -1) if body.get("zip_index") is not None else -1),
+        "file_name": f"{dl_id}{ext}",
+        "total_bytes": int(body.get("sub_size") or 0),
+        "downloaded_bytes": 0,
+        "status": "queued",
+        "error": "",
+        "speed_bps": 0,
+        "audio_tracks": [],
+        "preferred_audio_track": 1,
+        "last_watched_pct": 0.0,
+        "watched_done_at": 0,
+        "created_at": time.time(),
+        "completed_at": 0,
+        "expires_at": 0,
+    }
+    with _OFFLINE_LOCK:
+        items = _load_offline_db_unlocked()
+        items.append(new_item)
+        _save_offline_db_unlocked(items)
+    threading.Thread(target=_run_offline_download_worker, args=(dl_id,), daemon=True).start()
+    return {"success": True, "item": new_item, "message": f"Downloading started ({quality_label} • {language})"}
+
+def handle_offline_download_action(body):
+    action = str((body or {}).get("action") or "").strip().lower()
+    dl_id = str((body or {}).get("id") or "").strip()
+    if action == "clear_all":
+        with _OFFLINE_LOCK:
+            items = _load_offline_db_unlocked()
+            kept = []
+            for it in items:
+                iid = it.get("id")
+                if iid in _OFFLINE_ACTIVE_WORKERS:
+                    _OFFLINE_DELETED_IDS.add(iid)
+                if _OFFLINE_ACTIVE_STREAMS.get(iid, 0) > 0:
+                    kept.append(it)
+                else:
+                    _delete_offline_files_only(it)
+            _save_offline_db_unlocked(kept)
+        return {"success": True, **list_offline_downloads()}
+
+    if not dl_id:
+        return {"success": False, "error": "Download id missing"}
+
+    if action == "pause":
+        with _OFFLINE_LOCK:
+            _OFFLINE_PAUSED_IDS.add(dl_id)
+            items = _load_offline_db_unlocked()
+            for it in items:
+                if it.get("id") == dl_id and it.get("status") in ("downloading", "queued"):
+                    it["status"] = "paused"
+                    it["speed_bps"] = 0
+            _save_offline_db_unlocked(items)
+        return {"success": True, **list_offline_downloads()}
+
+    if action == "resume":
+        entry = _get_offline_entry(dl_id)
+        if not entry:
+            return {"success": False, "error": "Download entry not found"}
+        if dl_id not in _OFFLINE_ACTIVE_WORKERS:
+            _update_offline_entry(dl_id, {"status": "queued", "error": ""})
+            threading.Thread(target=_run_offline_download_worker, args=(dl_id,), daemon=True).start()
+        return {"success": True, **list_offline_downloads()}
+
+    if action == "delete":
+        with _OFFLINE_LOCK:
+            if _OFFLINE_ACTIVE_STREAMS.get(dl_id, 0) > 0:
+                return {"success": False, "error": "Ye movie abhi chal rahi hai; player band karke delete karein"}
+            if dl_id in _OFFLINE_ACTIVE_WORKERS:
+                _OFFLINE_DELETED_IDS.add(dl_id)
+            items = _load_offline_db_unlocked()
+            rem = []
+            for it in items:
+                if it.get("id") == dl_id:
+                    _delete_offline_files_only(it)
+                else:
+                    rem.append(it)
+            _save_offline_db_unlocked(rem)
+        return {"success": True, **list_offline_downloads()}
+
+    return {"success": False, "error": f"Unknown action: {action}"}
 
 def _stop_previous_players():
     global _INBUILT_PLAYER_PROC, _EXTERNAL_VLC_USED

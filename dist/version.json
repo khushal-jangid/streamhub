@@ -1,13 +1,13 @@
 {
-    "version":  "2.4.1",
-    "download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.4.1/StreamHub.exe",
-    "sha256":  "e6535a7f5260b39fd442eacc49ca72f5303db3a5ca69981dfc3ab3a1716077ba",
-    "size_bytes":  87662123,
-    "apk_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.4.1/StreamHub.apk",
-    "apk_sha256":  "635df5beedd871ff6041c825cac5e3e932ed5c96ccbc04fc2b9dd5ad688192db",
-    "apk_size_bytes":  77978468,
-    "py_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.4.1/streamhub_app.py",
-    "py_sha256":  "efedb6c75fd72cdff81b35afed1523c93afd241b4526091e585fc1c36d0ac31d",
-    "min_apk_version_code":  3,
-    "notes":  "StreamHub v2.4.1: Added Settings menu \u0026 update checker in top bar + bottom dock, plus instant in-player Next Episode switching with background episode pre-resolving!"
+    "version":  "2.5.0",
+    "download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.0/StreamHub.exe",
+    "sha256":  "7723fd9cd24e81c3efbf87c8184fecdbb37191504e6e82c85a7adcd7a5a2250c",
+    "size_bytes":  87698023,
+    "apk_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.0/StreamHub.apk",
+    "apk_sha256":  "2318bb007f15273c2ffc2b953e4621b5e0e4893d90747b11e42d55df695b64e4",
+    "apk_size_bytes":  78015276,
+    "py_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.0/streamhub_app.py",
+    "py_sha256":  "7d10db66d993545cddf70b27d8ba960de477de3ef6a02653e1910a61ec9ad39d",
+    "min_apk_version_code":  4,
+    "notes":  "v2.5.0: Full Settings Page (Profile, Live Themes: Netflix/AMOLED/Prime/Gold, Storage Cap \u0026 Auto-Delete), Dedicated App Update Page inside Settings, \u0026 Netflix-style Private In-App Offline Downloads (Quality + Language selection, Pause/Resume, Offline Playback)."
 }
