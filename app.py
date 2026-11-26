@@ -53,7 +53,7 @@ if sys.platform == 'win32':
     except Exception:
         pass
 
-APP_VERSION = "2.5.1"
+APP_VERSION = "2.5.2"
 DEFAULT_UPDATE_URL = "khushal-jangid/streamhub"
 STREAMHUB_UPDATE_URL = os.environ.get("STREAMHUB_UPDATE_URL", "").strip()
 _ENV_DATA_DIR = os.environ.get("STREAMHUB_DATA_DIR", "").strip()
@@ -4755,8 +4755,50 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 
 /* ── Modals & Toasts & Library ───────────────────────────── */
 .modal-overlay {
-    position: fixed; inset: 0; z-index: 95; background: rgba(3, 5, 11, 0.88);
+    position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 95; background: rgba(3, 5, 11, 0.92);
     display: none; align-items: center; justify-content: center; padding: 16px;
+}
+.sh-view-hidden { display: none !important; }
+.modal-overlay.sh-full-page {
+    position: relative !important;
+    top: auto !important; right: auto !important; bottom: auto !important; left: auto !important;
+    inset: auto !important;
+    z-index: 10 !important;
+    width: 100% !important;
+    min-height: 100vh;
+    background: #080b14 !important;
+    padding: 0 0 32px !important;
+}
+.modal-overlay.sh-full-page.open { display: none !important; }
+.modal-overlay.sh-full-page.sh-page-visible { display: block !important; }
+.modal-overlay.sh-full-page .settings-dialog {
+    width: 100% !important;
+    max-width: 720px !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 auto !important;
+    display: block !important;
+    overflow: visible !important;
+    background: #0b0f1c !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+.modal-overlay.sh-full-page .settings-head {
+    display: flex !important;
+    position: relative !important;
+    background: #111626 !important;
+    padding: 15px 16px !important;
+    border-bottom: 1px solid rgba(255,255,255,0.12) !important;
+}
+.modal-overlay.sh-full-page .settings-body {
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 75vh !important;
+    background: #090d16 !important;
+    padding: 16px 14px 44px !important;
 }
 .modal-overlay.open { display: flex; }
 .modal-dialog {
@@ -5755,7 +5797,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
 </div>
 
 <!-- Main Settings Menu Hub Page (Tapping any item opens its own dedicated page) -->
-<div class="modal-overlay fullscreen-mobile" id="settingsModalOverlay" onclick="if(event.target===this) closeSettingsModal()" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+<div class="modal-overlay fullscreen-mobile sh-full-page" id="settingsModalOverlay" onclick="if(event.target===this) closeSettingsModal()" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
     <div class="settings-dialog">
         <div class="settings-head">
             <div style="display:flex;align-items:center;gap:12px;">
@@ -5843,7 +5885,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
 </div>
 
 <!-- Sub-Page 1: Dedicated Profile & Language Page -->
-<div class="modal-overlay fullscreen-mobile" id="profilePageModal" onclick="if(event.target===this) closeSubPage('profilePageModal')" role="dialog" aria-modal="true" aria-labelledby="profilePageTitle">
+<div class="modal-overlay fullscreen-mobile sh-full-page" id="profilePageModal" onclick="if(event.target===this) closeSubPage('profilePageModal')" role="dialog" aria-modal="true" aria-labelledby="profilePageTitle">
     <div class="settings-dialog">
         <div class="settings-head">
             <div style="display:flex;align-items:center;gap:10px;">
@@ -5897,7 +5939,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
 </div>
 
 <!-- Sub-Page 2: Dedicated App Theme Page -->
-<div class="modal-overlay fullscreen-mobile" id="themePageModal" onclick="if(event.target===this) closeSubPage('themePageModal')" role="dialog" aria-modal="true" aria-labelledby="themePageTitle">
+<div class="modal-overlay fullscreen-mobile sh-full-page" id="themePageModal" onclick="if(event.target===this) closeSubPage('themePageModal')" role="dialog" aria-modal="true" aria-labelledby="themePageTitle">
     <div class="settings-dialog">
         <div class="settings-head">
             <div style="display:flex;align-items:center;gap:10px;">
@@ -5942,7 +5984,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
 </div>
 
 <!-- Sub-Page 3: Dedicated Download & Storage Settings Page -->
-<div class="modal-overlay fullscreen-mobile" id="dlSettingsPageModal" onclick="if(event.target===this) closeSubPage('dlSettingsPageModal')" role="dialog" aria-modal="true" aria-labelledby="dlSettingsPageTitle">
+<div class="modal-overlay fullscreen-mobile sh-full-page" id="dlSettingsPageModal" onclick="if(event.target===this) closeSubPage('dlSettingsPageModal')" role="dialog" aria-modal="true" aria-labelledby="dlSettingsPageTitle">
     <div class="settings-dialog">
         <div class="settings-head">
             <div style="display:flex;align-items:center;gap:10px;">
@@ -6024,7 +6066,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
 </div>
 
 <!-- Sub-Page 4: Dedicated Refresh Movies & Tools Page -->
-<div class="modal-overlay fullscreen-mobile" id="toolsPageModal" onclick="if(event.target===this) closeSubPage('toolsPageModal')" role="dialog" aria-modal="true" aria-labelledby="toolsPageTitle">
+<div class="modal-overlay fullscreen-mobile sh-full-page" id="toolsPageModal" onclick="if(event.target===this) closeSubPage('toolsPageModal')" role="dialog" aria-modal="true" aria-labelledby="toolsPageTitle">
     <div class="settings-dialog">
         <div class="settings-head">
             <div style="display:flex;align-items:center;gap:10px;">
@@ -6057,11 +6099,11 @@ html, body { max-width: 100%; overflow-x: hidden; }
 </div>
 
 <!-- Sub-Page 5: App Updates Dedicated Page -->
-<div class="modal-overlay fullscreen-mobile" id="updateModalOverlay" onclick="if(event.target===this) closeUpdateModal()" role="dialog" aria-modal="true" aria-labelledby="updateModalTitle">
+<div class="modal-overlay fullscreen-mobile sh-full-page" id="updateModalOverlay" onclick="if(event.target===this) closeUpdateModal()" role="dialog" aria-modal="true" aria-labelledby="updateModalTitle">
     <div class="settings-dialog">
         <div class="settings-head">
             <div style="display:flex;align-items:center;gap:10px;min-width:0;">
-                <button type="button" id="btnUpdateBackToSettings" class="btn-sm btn-copy-sm" onclick="closeUpdateModal(); openSettingsModal();" title="Back to Settings">← Settings</button>
+                <button type="button" id="btnUpdateBackToSettings" class="btn-sm btn-copy-sm" onclick="backFromUpdateToSettings()" title="Back to Settings">← Settings</button>
                 <div style="min-width:0;">
                     <h2 id="updateModalTitle" style="font-size:1.05rem;font-weight:900;color:#fff;">🔄 App Updates</h2>
                     <div id="updateMetaLine" style="font-size:0.74rem;color:#94a3b8;margin-top:2px;">Version loading...</div>
@@ -6103,7 +6145,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
 </div>
 
 <!-- Sub-Page 6 / Downloads Dedicated Page -->
-<div class="modal-overlay fullscreen-mobile" id="downloadsModalOverlay" onclick="if(event.target===this) closeDownloadsModal()" role="dialog" aria-modal="true" aria-labelledby="downloadsModalTitle">
+<div class="modal-overlay fullscreen-mobile sh-full-page" id="downloadsModalOverlay" onclick="if(event.target===this) closeDownloadsModal()" role="dialog" aria-modal="true" aria-labelledby="downloadsModalTitle">
     <div class="settings-dialog">
         <div class="settings-head">
             <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
@@ -6114,7 +6156,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 </div>
             </div>
             <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
-                <button type="button" class="btn-sm btn-copy-sm" onclick="closeDownloadsModal(); openSettingsModal(); openSettingsSubPage('dlSettingsPageModal');" title="Storage Limit &amp; Auto-Delete Settings">⚙️</button>
+                <button type="button" class="btn-sm btn-copy-sm" onclick="openSettingsSubPage('dlSettingsPageModal');" title="Storage Limit &amp; Auto-Delete Settings">⚙️</button>
                 <button class="btn-close-card" onclick="closeAllSettingsPages()" aria-label="Close downloads">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
@@ -6322,9 +6364,12 @@ html, body { max-width: 100%; overflow-x: hidden; }
         document.querySelectorAll('#categoryStrip .cat-chip').forEach(b => {
             b.classList.toggle('active', b.getAttribute('data-cat') === '');
         });
-        document.getElementById('filterAll')?.classList.add('active');
-        document.getElementById('filterMovies')?.classList.remove('active');
-        document.getElementById('filterSeries')?.classList.remove('active');
+        const fAll = document.getElementById('filterAll');
+        if (fAll) fAll.classList.add('active');
+        const fMov = document.getElementById('filterMovies');
+        if (fMov) fMov.classList.remove('active');
+        const fSer = document.getElementById('filterSeries');
+        if (fSer) fSer.classList.remove('active');
         const bh = document.getElementById('browseHeading');
         if (bh) bh.textContent = 'All Movies & Web Series';
         if (ottHubData && Array.isArray(ottHubData.latest) && ottHubData.latest.length) {
@@ -6347,7 +6392,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 else if (id === 'updateModalOverlay') closeUpdateModal();
                 else if (id === 'downloadsModalOverlay') closeDownloadsModal();
                 else if (id === 'settingsModalOverlay') closeSettingsModal();
-                else el.classList.remove('open');
+                else closeSubPage(id);
                 return true;
             }
         }
@@ -8424,7 +8469,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
     }
 
     async function findOnlineSubtitles() {
-        const q = (document.getElementById('subQueryInput')?.value || activeTitle || '').trim();
+        const subInEl = document.getElementById('subQueryInput');
+        const q = ((subInEl && subInEl.value) || activeTitle || '').trim();
         const box = document.getElementById('subResultsList');
         const btn = document.getElementById('btnFindSubs');
         if (!box) return;
@@ -8445,7 +8491,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
             box.innerHTML = '';
             const list = (data && data.subtitles) || [];
             if (!list.length) {
-                box.innerHTML = `<div style="font-size:0.76rem;color:#fca5a5;padding:4px 0;">${esc(data?.error || 'Koi online .srt nahi mila — "Local .srt" button se upload kar sakte hain')}</div>`;
+                box.innerHTML = `<div style="font-size:0.76rem;color:#fca5a5;padding:4px 0;">${esc((data && data.error) || 'Koi online .srt nahi mila — "Local .srt" button se upload kar sakte hain')}</div>`;
             } else {
                 list.slice(0, 12).forEach(s => {
                     const row = document.createElement('div');
@@ -8483,7 +8529,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 applySubtitleToInlineVideo();
                 showToast(data.inbuilt_applied ? 'Subtitle live attach ho gaya!' : 'Subtitle ready — player par automatic lagega');
             } else {
-                showToast('Subtitle load failed: ' + (data?.error || ''), 'err');
+                showToast('Subtitle load failed: ' + ((data && data.error) || ''), 'err');
             }
         } catch (e) {
             showToast('Subtitle error: ' + e.message, 'err');
@@ -8671,10 +8717,51 @@ html, body { max-width: 100%; overflow-x: hidden; }
         await refreshDownloadsState(false);
     }
 
+    const SH_FULL_PAGES = [
+        'settingsModalOverlay', 'profilePageModal', 'themePageModal',
+        'dlSettingsPageModal', 'toolsPageModal', 'updateModalOverlay', 'downloadsModalOverlay'
+    ];
+    let _savedMainScrollY = 0;
+
+    function _syncFullPageView() {
+        let topOpen = null;
+        SH_FULL_PAGES.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.classList.remove('sh-page-visible');
+                if (el.classList.contains('open')) topOpen = el;
+            }
+        });
+        const mainParts = [
+            document.getElementById('topNavbar'),
+            document.getElementById('heroSpotlight'),
+            document.querySelector('main.app-shell'),
+            document.querySelector('nav.mobile-dock'),
+            document.getElementById('introSplash')
+        ];
+        if (topOpen) {
+            if (!document.body.getAttribute('data-sh-subview')) {
+                _savedMainScrollY = window.scrollY || 0;
+                document.body.setAttribute('data-sh-subview', '1');
+            }
+            mainParts.forEach(el => { if (el) el.classList.add('sh-view-hidden'); });
+            topOpen.classList.add('sh-page-visible');
+            window.scrollTo(0, 0);
+        } else {
+            const wasSub = document.body.getAttribute('data-sh-subview') === '1';
+            document.body.removeAttribute('data-sh-subview');
+            mainParts.forEach(el => { if (el) el.classList.remove('sh-view-hidden'); });
+            if (wasSub && _savedMainScrollY > 0) {
+                setTimeout(() => window.scrollTo(0, _savedMainScrollY), 10);
+            }
+        }
+    }
+
     async function openSettingsModal() {
         dismissIntro();
         const ov = document.getElementById('settingsModalOverlay');
         if (ov) ov.classList.add('open');
+        _syncFullPageView();
         try {
             const resp = await fetch('/api/settings');
             const data = await resp.json();
@@ -8690,28 +8777,34 @@ html, body { max-width: 100%; overflow-x: hidden; }
     function closeSettingsModal() {
         const ov = document.getElementById('settingsModalOverlay');
         if (ov) ov.classList.remove('open');
+        _syncFullPageView();
     }
 
     function openSettingsSubPage(id) {
         dismissIntro();
         const ov = document.getElementById(id);
         if (ov) ov.classList.add('open');
+        _syncFullPageView();
     }
 
     function closeSubPage(id) {
         const ov = document.getElementById(id);
         if (ov) ov.classList.remove('open');
+        _syncFullPageView();
     }
 
     function closeAllSettingsPages() {
-        ['profilePageModal', 'themePageModal', 'dlSettingsPageModal', 'toolsPageModal', 'updateModalOverlay', 'downloadsModalOverlay', 'settingsModalOverlay'].forEach(id => {
+        SH_FULL_PAGES.forEach(id => {
             const ov = document.getElementById(id);
             if (ov) ov.classList.remove('open');
         });
+        clearInterval(updatePollTimer);
+        updatePollTimer = null;
         if (offlinePollTimer) {
             const activeCnt = Number((userSettingsState.storage && userSettingsState.storage.active_count) || 0);
             if (activeCnt === 0) { clearInterval(offlinePollTimer); offlinePollTimer = null; }
         }
+        _syncFullPageView();
         renderLiveDownloadBanner();
     }
 
@@ -9162,6 +9255,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         dismissIntro();
         const ov = document.getElementById('downloadsModalOverlay');
         if (ov) ov.classList.add('open');
+        _syncFullPageView();
         await refreshDownloadsState(true);
     }
 
@@ -9173,6 +9267,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
             clearInterval(offlinePollTimer);
             offlinePollTimer = null;
         }
+        _syncFullPageView();
         renderLiveDownloadBanner();
     }
 
@@ -9347,6 +9442,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         dismissIntro();
         const ov = document.getElementById('updateModalOverlay');
         if (ov) ov.classList.add('open');
+        _syncFullPageView();
         const bk = document.getElementById('btnUpdateBackToSettings');
         if (bk) bk.style.display = (fromSettings === false) ? 'inline-flex' : 'inline-flex';
         checkAppUpdate(true, true);
@@ -9357,6 +9453,17 @@ html, body { max-width: 100%; overflow-x: hidden; }
         if (ov) ov.classList.remove('open');
         clearInterval(updatePollTimer);
         updatePollTimer = null;
+        _syncFullPageView();
+    }
+
+    function backFromUpdateToSettings() {
+        const uov = document.getElementById('updateModalOverlay');
+        if (uov) uov.classList.remove('open');
+        clearInterval(updatePollTimer);
+        updatePollTimer = null;
+        const sov = document.getElementById('settingsModalOverlay');
+        if (sov) sov.classList.add('open');
+        _syncFullPageView();
     }
 
     function renderUpdateModalState(data) {
