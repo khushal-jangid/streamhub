@@ -53,7 +53,7 @@ if sys.platform == 'win32':
     except Exception:
         pass
 
-APP_VERSION = "2.5.8"
+APP_VERSION = "2.5.9"
 DEFAULT_UPDATE_URL = "khushal-jangid/streamhub"
 STREAMHUB_UPDATE_URL = os.environ.get("STREAMHUB_UPDATE_URL", "").strip()
 _ENV_DATA_DIR = os.environ.get("STREAMHUB_DATA_DIR", "").strip()
@@ -3345,25 +3345,44 @@ def parse_movie_details(post_url):
         return {"success": False, "error": str(e), "qualities": []}
 
 
-def _pick_best_hblinks_url(html):
-    """Picks the highest-quality stream mirror from an HBLInks archive page (prefers 4K/1080p over 480p)."""
+def _extract_hblinks_options(html):
+    """Extracts all playable stream options with clean labels from an HBLInks archive page."""
     candidates = []
+    seen = set()
     for hm in re.finditer(r'<h[2-6][^>]*>(.*?)</h[2-6]>', html, re.S | re.I):
         row_txt = _clean_tag_text(hm.group(1))
-        base_score = _rank_quality_label(row_txt)
         for am in re.finditer(r'<a[^>]+href=["\'](https?://[^"\'\s<>]+)["\'][^>]*>(.*?)</a>', hm.group(1), re.S | re.I):
             href = am.group(1).strip()
             atxt = _clean_tag_text(am.group(2))
             lh = href.lower()
-            if not any(h in lh for h in ('hubcloud', 'hubdrive', 'hubcdn', 'gdflix', 'filepress')):
+            if href in seen or not any(h in lh for h in ('hubcloud', 'hubdrive', 'hubcdn', 'gdflix', 'filepress')):
                 continue
+            seen.add(href)
             host_bonus = 6 if 'hubcloud' in lh else (4 if 'hubdrive' in lh else (2 if 'hubcdn' in lh else 0))
-            score = max(base_score, _rank_quality_label(atxt)) + host_bonus
-            candidates.append((score, href))
-    if not candidates:
+            lbl = row_txt if (row_txt and len(row_txt) > len(atxt)) else (atxt or row_txt or 'HD Stream')
+            candidates.append({'title': lbl, 'link': href, 'host_bonus': host_bonus})
+    return candidates
+
+def _pick_best_hblinks_url(html, pref_quality=None, pref_lang=None):
+    """Picks fastest-matching quality mirror from HBLInks (respecting auto 480p-start & host reliability)."""
+    opts = _extract_hblinks_options(html)
+    if not opts:
         return None
-    candidates.sort(key=lambda pair: pair[0], reverse=True)
-    return candidates[0][1]
+    if pref_quality is None or pref_lang is None:
+        try:
+            uc = get_user_settings()
+            if pref_quality is None:
+                pref_quality = (uc.get('download_prefs') or {}).get('stream_quality') or 'auto'
+            if pref_lang is None:
+                pref_lang = (uc.get('profile') or {}).get('preferred_language') or 'Auto'
+        except Exception:
+            pref_quality = pref_quality or 'auto'
+            pref_lang = pref_lang or 'Auto'
+    opts.sort(
+        key=lambda o: _score_quality_candidate(o['title'], pref_quality, pref_lang, link=o['link']) + o['host_bonus'],
+        reverse=True
+    )
+    return opts[0]['link']
 
 def _resolve_hubdrive_pack(html, base_url):
     """Parses a HubDrive /packs/<id> page into direct individual episode MKV links (+ full ZIP pack option)."""
@@ -7928,7 +7947,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         const pKey = (currentMovieMeta && currentMovieMeta.permalink) || '';
         const epLbl = `Ep ${zipIdx + 1}`;
         const mKey = pKey ? `${pKey}::zip::${ep.name}` : (ep.sid || ep.name);
-        const prevProg = getProgressByKey(mKey, ep.sid || ep.name);
+        const prevProg = getProgressForKey(mKey) || getProgressForKey(ep.sid || ep.name);
         const startSec = (prevProg && prevProg.position_sec >= 10 && prevProg.pct < 95) ? Math.floor(prevProg.position_sec) : 0;
         const reqPayload = {
             stream_url: ep.stream_url,
@@ -8068,6 +8087,16 @@ html, body { max-width: 100%; overflow-x: hidden; }
         if ((!details.seasons || !details.seasons.length) && details.packs && details.packs.length) {
             const bestP = _pickLightestPackIdx(details.packs);
             if (bestP >= 0) unpackSeriesPackInline(bestP, true);
+        } else if (details.seasons && details.seasons.length && details.seasons[0].episodes && details.seasons[0].episodes.length) {
+            // Silently pre-warm Episode 1 in background while user views episodes
+            const firstEp = details.seasons[0].episodes[0];
+            if (firstEp && firstEp.link && /^https?:\/\//i.test(firstEp.link) && !/\.test\//i.test(firstEp.link)) {
+                fetch('/api/prewarm', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: firstEp.link })
+                }).catch(() => {});
+            }
         }
     }
 
@@ -8282,7 +8311,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
             const sea = (activeSeriesData && activeSeriesData.seasons || [])[sIdx];
             const epObjCur = sea && sea.episodes ? sea.episodes[epIdx] : null;
             const epKey = pKey ? `${pKey}::ep::${epLbl}` : link;
-            const prevProg = getProgressByKey(epKey, link);
+            const prevProg = getProgressForKey(epKey) || getProgressForKey(link);
             const startSec = (prevProg && prevProg.position_sec >= 10 && prevProg.pct < 95) ? Math.floor(prevProg.position_sec) : 0;
             launchAndroidDirectStream({
                 hdhub_link: link,
@@ -12201,6 +12230,17 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
                 self._json({"success": False, "error": str(e)}, status=500)
             return
 
+        if self.path == '/api/prewarm':
+            try:
+                body = json.loads(raw_body.decode('utf-8')) if raw_body else {}
+                lnk = str(body.get('url', '') or '').strip()
+                if lnk:
+                    _prewarm_episode_async(lnk)
+                self._json({"success": True})
+            except Exception as e:
+                self._json({"success": False, "error": str(e)}, status=500)
+            return
+
         if self.path in ('/api/play_vlc', '/api/play_inbuilt'):
             try:
                 body = json.loads(raw_body.decode('utf-8'))
@@ -12306,6 +12346,7 @@ def _ensure_embedded_vlc_extracted(show_splash=True):
 _EPISODE_CACHE_LOCK = threading.Lock()
 _EPISODE_RESOLVE_CACHE = OrderedDict()  # {link: (ts, resolved_dict)}
 _EPISODE_PREWARM_EVENTS = {}            # {link: threading.Event}
+_HBLINKS_OPTS_CACHE = OrderedDict()     # {hblinks_url: (ts, hb_opts)}
 _MOVIE_DETAILS_CACHE_LOCK = threading.Lock()
 _MOVIE_DETAILS_CACHE = OrderedDict()    # {permalink: (ts, details_dict)}
 
@@ -12444,6 +12485,10 @@ def _score_quality_candidate(title_str, pref_quality='auto', pref_lang='Auto', l
 
     if is_hdstream:
         score -= 40
+    if 'hubcloud' in lnk_l or 'hubcdn' in lnk_l:
+        score += 12
+    elif 'hubdrive' in lnk_l:
+        score += 6
 
     if pl and pl != 'auto':
         if pl in tl:
@@ -12512,6 +12557,48 @@ def _find_completed_offline_match(keys):
                 return item
     return None
 
+def _rank_quality_option_indices(quality_options, pref_quality='auto', pref_lang='Auto', selected_q_id=None):
+    """Rank normalized quality_options indices best-first for playback resolution."""
+    if not quality_options:
+        return []
+    ranked = sorted(
+        range(len(quality_options)),
+        key=lambda i: _score_quality_candidate(
+            quality_options[i].get('raw_title') or quality_options[i].get('label'),
+            pref_quality,
+            pref_lang,
+            link=quality_options[i].get('hdhub_link', ''),
+            size_gb=float(quality_options[i].get('size_gb', 0) or 0)
+        ),
+        reverse=True
+    )
+    if selected_q_id is not None and 0 <= selected_q_id < len(quality_options):
+        ranked = [selected_q_id] + [i for i in ranked if i != selected_q_id]
+    return ranked
+
+def _get_hblinks_options_cached(hdhub_link):
+    """Fetch and cache parsed quality mirror options from an HBLInks page."""
+    lnk = str(hdhub_link or '').strip()
+    if not lnk or 'hblinks.' not in lnk.lower():
+        return []
+    now = time.time()
+    with _EPISODE_CACHE_LOCK:
+        hit = _HBLINKS_OPTS_CACHE.get(lnk)
+        if hit and (now - hit[0]) < 1800:
+            _HBLINKS_OPTS_CACHE.move_to_end(lnk)
+            return list(hit[1])
+    try:
+        hb_html, _ = fetch_html(lnk, timeout=8)
+        hb_opts = _extract_hblinks_options(hb_html)
+    except Exception:
+        hb_opts = []
+    if hb_opts:
+        with _EPISODE_CACHE_LOCK:
+            _HBLINKS_OPTS_CACHE[lnk] = (time.time(), hb_opts)
+            while len(_HBLINKS_OPTS_CACHE) > 80:
+                _HBLINKS_OPTS_CACHE.popitem(last=False)
+    return list(hb_opts)
+
 def _resolve_episode_cached(hdhub_link):
     lnk = str(hdhub_link or '').strip()
     if not lnk:
@@ -12553,11 +12640,28 @@ def _prewarm_episode_async(hdhub_link):
         _EPISODE_PREWARM_EVENTS[lnk] = ev
 
     def _bg():
+        target_lnk = lnk
         try:
-            res = resolve_hubcloud(lnk)
+            if 'hblinks.' in lnk.lower():
+                hb_opts = _get_hblinks_options_cached(lnk)
+                if hb_opts:
+                    user_cfg = get_user_settings()
+                    pref_q = str((user_cfg.get('download_prefs') or {}).get('stream_quality') or 'auto').strip()
+                    pref_l = str((user_cfg.get('profile') or {}).get('preferred_language') or 'Auto').strip()
+                    q_built = _build_quality_options_from_list(hb_opts)
+                    ranked = _rank_quality_option_indices(q_built, pref_q, pref_l)
+                    if ranked:
+                        target_lnk = q_built[ranked[0]]['hdhub_link']
+                        with _EPISODE_CACHE_LOCK:
+                            if target_lnk not in _EPISODE_PREWARM_EVENTS:
+                                _EPISODE_PREWARM_EVENTS[target_lnk] = ev
+            res = resolve_hubcloud(target_lnk)
             if res and res.get('success') and res.get('stream_url'):
                 with _EPISODE_CACHE_LOCK:
-                    _EPISODE_RESOLVE_CACHE[lnk] = (time.time(), res)
+                    now_ok = time.time()
+                    for cache_k in {lnk, target_lnk}:
+                        if cache_k:
+                            _EPISODE_RESOLVE_CACHE[cache_k] = (now_ok, res)
                     while len(_EPISODE_RESOLVE_CACHE) > 80:
                         _EPISODE_RESOLVE_CACHE.popitem(last=False)
                 cm_r = int(res.get('compress_method', 0) or 0)
@@ -12569,7 +12673,10 @@ def _prewarm_episode_async(hdhub_link):
             pass
         finally:
             with _EPISODE_CACHE_LOCK:
-                _EPISODE_PREWARM_EVENTS.pop(lnk, None)
+                if _EPISODE_PREWARM_EVENTS.get(lnk) is ev:
+                    _EPISODE_PREWARM_EVENTS.pop(lnk, None)
+                if target_lnk != lnk and _EPISODE_PREWARM_EVENTS.get(target_lnk) is ev:
+                    _EPISODE_PREWARM_EVENTS.pop(target_lnk, None)
             ev.set()
 
     threading.Thread(target=_bg, daemon=True).start()
@@ -12678,6 +12785,13 @@ def _prepare_play_target(body, srv_port=None):
                                 'movie_permalink': movie_permalink,
                             }
 
+    if not is_offline_local and not stream_url and not raw_q_source and hdhub_link and 'hblinks.' in hdhub_link.lower():
+        hb_opts = _get_hblinks_options_cached(hdhub_link)
+        if hb_opts:
+            raw_q_source = hb_opts
+            if selected_q_id is None:
+                hdhub_link = ''
+
     if raw_q_source:
         quality_options = _build_quality_options_from_list(raw_q_source, active_link=hdhub_link)
 
@@ -12696,19 +12810,7 @@ def _prepare_play_target(body, srv_port=None):
             else:
                 cand_links = [(idx_q, quality_options[idx_q]['hdhub_link'], quality_options[idx_q]['short_label']) for idx_q in cand_indices]
         elif quality_options:
-            ranked = sorted(
-                range(len(quality_options)),
-                key=lambda i: _score_quality_candidate(
-                    quality_options[i].get('raw_title') or quality_options[i].get('label'),
-                    pref_quality,
-                    pref_lang,
-                    link=quality_options[i].get('hdhub_link', ''),
-                    size_gb=float(quality_options[i].get('size_gb', 0) or 0)
-                ),
-                reverse=True
-            )
-            if selected_q_id is not None and 0 <= selected_q_id < len(quality_options):
-                ranked = [selected_q_id] + [i for i in ranked if i != selected_q_id]
+            ranked = _rank_quality_option_indices(quality_options, pref_quality, pref_lang, selected_q_id)
             cand_links = [(i, quality_options[i]['hdhub_link'], quality_options[i]['short_label']) for i in ranked[:6]]
         elif hdhub_link:
             cand_links = [(0, hdhub_link, '')]

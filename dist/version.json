@@ -1,13 +1,13 @@
 {
-    "version":  "2.5.8",
+    "version":  "2.5.9",
     "download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.0/StreamHub.exe",
     "sha256":  "7723fd9cd24e81c3efbf87c8184fecdbb37191504e6e82c85a7adcd7a5a2250c",
     "size_bytes":  87698023,
-    "apk_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.8/StreamHub.apk",
-    "apk_sha256":  "29c839b30aba434145b345f40785c71d2ea0cbaae3872243c93ec52e22289ab1",
-    "apk_size_bytes":  78077704,
-    "py_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.8/streamhub_app.py",
-    "py_sha256":  "3c6b675bcbd78b6178d0b0c9b201ea613a5ed79d3a6cbb4508b2891548157ec5",
+    "apk_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.9/StreamHub.apk",
+    "apk_sha256":  "ba6ceff2b2e727e5610d02109bd4b760f95b798eefd18e7a142e52939dd5ff19",
+    "apk_size_bytes":  78080232,
+    "py_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.9/streamhub_app.py",
+    "py_sha256":  "b21b546f23083c55fc8879f21e16827e214c88c44d867c93888aeb189259a4be",
     "min_apk_version_code":  12,
-    "notes":  "v2.5.8 (Android APK): Fast 480p start + internet-speed Auto ABR quality switching in player (never auto-picks 50-90GB Remuxes), 3x faster 4K/HubCloud resolution + 512KB async init, HDStream4u 404 bypass \u0026 403 worker skip, and full Web Series auto-unpacking (Season Packs + 4KHDHub episode qualities)."
+    "notes":  "v2.5.9 (Android Instant OTA \u0026 APK): Fixed Web Series Episode 1-tap playback crash (getProgressForKey), added HBLInks per-episode multi-quality ABR (480p fast start + in-player Quality switching), direct HubCloud prioritization, and instant EP-01 background pre-warming."
 }
