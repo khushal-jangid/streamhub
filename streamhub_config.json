@@ -1,3 +1,10 @@
 {
-  "last_port": 5050
+  "last_port": 5050,
+  "download_prefs": {
+    "storage_limit_gb": 0,
+    "auto_delete_watched": true,
+    "auto_expire_days": 7,
+    "default_quality": "ask"
+  },
+  "theme": "gold"
 }

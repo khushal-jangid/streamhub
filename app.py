@@ -53,7 +53,7 @@ if sys.platform == 'win32':
     except Exception:
         pass
 
-APP_VERSION = "2.5.0"
+APP_VERSION = "2.5.1"
 DEFAULT_UPDATE_URL = "khushal-jangid/streamhub"
 STREAMHUB_UPDATE_URL = os.environ.get("STREAMHUB_UPDATE_URL", "").strip()
 _ENV_DATA_DIR = os.environ.get("STREAMHUB_DATA_DIR", "").strip()
@@ -4755,12 +4755,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 
 /* ── Modals & Toasts & Library ───────────────────────────── */
 .modal-overlay {
-    position: fixed; inset: 0; z-index: 90; background: rgba(4, 5, 10, 0.82); backdrop-filter: blur(12px);
+    position: fixed; inset: 0; z-index: 95; background: rgba(3, 5, 11, 0.88);
     display: none; align-items: center; justify-content: center; padding: 16px;
 }
 .modal-overlay.open { display: flex; }
 .modal-dialog {
-    width: 100%; max-width: 440px; background: #0f131f; border: 1px solid var(--border-strong);
+    width: 100%; max-width: 440px; max-height: 92vh; overflow-y: auto;
+    background: #0f131f; border: 1px solid var(--border-strong); color: var(--text, #f8fafc);
     border-radius: 22px; padding: 24px 20px; text-align: center; box-shadow: 0 30px 80px rgba(0,0,0,0.85);
 }
 .modal-qr-frame { width: 220px; height: 220px; margin: 14px auto; background: #fff; padding: 10px; border-radius: 16px; }
@@ -4773,87 +4774,136 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 
 /* ── Dedicated Settings Page & Offline Downloads UI ─────── */
 .settings-dialog {
-    width: 100%; max-width: 680px; max-height: 92vh; overflow-y: auto;
-    background: var(--bg-elevated); border: 1px solid var(--border-strong);
-    border-radius: 22px; text-align: left; box-shadow: var(--shadow-lg);
+    width: 100%; max-width: 700px; height: min(92vh, 880px); max-height: 92dvh;
+    display: flex; flex-direction: column; overflow: hidden;
+    background: #0c101c; background: var(--bg-elevated, #0c101c); color: #f8fafc;
+    border: 1px solid rgba(255,255,255,0.16); border-radius: 22px; text-align: left;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.88);
 }
 .settings-head {
-    position: sticky; top: 0; z-index: 5;
-    background: rgba(11, 14, 22, 0.94); backdrop-filter: blur(16px);
-    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    background: #111626; background: var(--surface-solid, #111626);
+    padding: 15px 18px; border-bottom: 1px solid rgba(255,255,255,0.10);
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
 }
-.settings-body { padding: 18px 20px 26px; display: flex; flex-direction: column; gap: 14px; }
+.settings-body {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 16px 18px 28px; display: flex; flex-direction: column; gap: 14px;
+    background: #0a0e18; background: var(--bg-elevated, #0a0e18);
+}
 .settings-card {
-    background: var(--surface-solid); border: 1px solid var(--border);
-    border-radius: 16px; padding: 15px 16px;
+    flex-shrink: 0;
+    background: #121728; background: var(--surface-solid, #121728);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 16px; padding: 15px 16px; color: #f8fafc;
 }
 .settings-card-title {
-    font-size: 0.86rem; font-weight: 800; color: var(--text);
+    font-size: 0.86rem; font-weight: 800; color: #ffffff;
     display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px;
 }
+.settings-menu-item {
+    flex-shrink: 0; width: 100%;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 14px 15px; border-radius: 16px;
+    background: #121728; background: var(--surface-solid, #121728);
+    border: 1px solid rgba(255,255,255,0.10); color: #f8fafc;
+    cursor: pointer; text-align: left; transition: transform 0.14s, border-color 0.16s, background 0.16s;
+}
+.settings-menu-item:hover, .settings-menu-item:active {
+    border-color: var(--accent, #e50914); background: #171e34;
+}
+.settings-menu-left { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+.settings-menu-ico {
+    width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.10);
+    display: grid; place-items: center; font-size: 1.18rem;
+}
+.settings-menu-title { font-size: 0.92rem; font-weight: 800; color: #ffffff; line-height: 1.25; }
+.settings-menu-sub { font-size: 0.74rem; color: #94a3b8; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.settings-menu-chev { font-size: 1.25rem; font-weight: 900; color: #94a3b8; flex-shrink: 0; }
 .settings-row {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
     padding: 10px 0; border-top: 1px solid rgba(255,255,255,0.06); flex-wrap: wrap;
 }
 .settings-row:first-of-type { border-top: none; padding-top: 0; }
-.settings-label { font-size: 0.82rem; font-weight: 700; color: var(--text); }
-.settings-sub { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; line-height: 1.35; }
+.settings-label { font-size: 0.82rem; font-weight: 700; color: #f8fafc; }
+.settings-sub { font-size: 0.72rem; color: #94a3b8; margin-top: 2px; line-height: 1.35; }
 .avatar-grid { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 .avatar-chip {
-    width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--border-strong);
-    background: var(--surface-2); font-size: 1.25rem; cursor: pointer; display: grid; place-items: center;
+    width: 40px; height: 40px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);
+    background: #1a2033; font-size: 1.25rem; cursor: pointer; display: grid; place-items: center;
     transition: transform 0.14s, border-color 0.14s, background 0.14s;
 }
-.avatar-chip.active { border-color: var(--accent); background: rgba(229,9,20,0.18); transform: scale(1.06); }
+.avatar-chip.active { border-color: var(--accent, #e50914); background: rgba(229,9,20,0.22); transform: scale(1.06); }
 .theme-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(136px, 1fr)); gap: 10px; }
 .theme-card {
-    background: var(--surface-2); border: 1.5px solid var(--border); border-radius: 13px;
-    padding: 11px 12px; cursor: pointer; text-align: left; transition: border-color 0.16s, transform 0.14s;
+    background: #171e31; border: 1.5px solid rgba(255,255,255,0.10); border-radius: 13px;
+    padding: 11px 12px; cursor: pointer; text-align: left; color: #f8fafc; transition: border-color 0.16s, transform 0.14s;
 }
-.theme-card:hover { border-color: var(--border-strong); }
-.theme-card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); transform: translateY(-1px); }
+.theme-card:hover { border-color: rgba(255,255,255,0.28); }
+.theme-card.active { border-color: var(--accent, #e50914); box-shadow: 0 0 0 1px var(--accent, #e50914); transform: translateY(-1px); }
 .theme-dots { display: flex; gap: 6px; margin-bottom: 7px; }
 .theme-dot { width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.22); }
-.theme-name { font-size: 0.8rem; font-weight: 800; color: var(--text); }
-.theme-desc { font-size: 0.69rem; color: var(--text-muted); margin-top: 2px; }
+.theme-name { font-size: 0.8rem; font-weight: 800; color: #ffffff; }
+.theme-desc { font-size: 0.69rem; color: #94a3b8; margin-top: 2px; }
 .update-entry-card {
+    flex-shrink: 0;
     display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;
-    background: linear-gradient(135deg, rgba(99,102,241,0.16), rgba(229,9,20,0.10));
-    border: 1px solid rgba(99,102,241,0.42); border-radius: 15px; padding: 14px 16px;
-    cursor: pointer; text-align: left; color: var(--text); transition: transform 0.14s, border-color 0.16s;
+    background: linear-gradient(135deg, rgba(99,102,241,0.24), rgba(229,9,20,0.16));
+    border: 1px solid rgba(99,102,241,0.52); border-radius: 15px; padding: 14px 16px;
+    cursor: pointer; text-align: left; color: #ffffff; transition: transform 0.14s, border-color 0.16s;
 }
-.update-entry-card:hover { transform: translateY(-1px); border-color: rgba(129,140,248,0.8); }
+.update-entry-card:hover { transform: translateY(-1px); border-color: rgba(129,140,248,0.85); }
 .storage-bar-track {
-    width: 100%; height: 9px; border-radius: 999px; background: rgba(255,255,255,0.08);
+    width: 100%; height: 9px; border-radius: 999px; background: rgba(255,255,255,0.10);
     overflow: hidden; margin: 8px 0 6px;
 }
-.storage-bar-fill { height: 100%; width: 0%; background: var(--accent); transition: width 0.3s ease; border-radius: 999px; }
+.storage-bar-fill { height: 100%; width: 0%; background: var(--accent, #e50914); transition: width 0.3s ease; border-radius: 999px; }
 .dl-item-card {
     display: flex; gap: 12px; align-items: flex-start;
-    background: var(--surface-solid); border: 1px solid var(--border);
+    background: #121728; border: 1px solid rgba(255,255,255,0.10);
     border-radius: 14px; padding: 12px; margin-bottom: 10px;
 }
 .dl-poster {
     width: 54px; height: 78px; border-radius: 9px; object-fit: cover;
-    background: var(--surface-2); flex-shrink: 0;
+    background: #1b2236; flex-shrink: 0;
 }
 .dl-q-pill, .dl-lang-pill {
-    background: var(--surface-2); border: 1px solid var(--border-strong); color: var(--text);
+    background: #1a2136; border: 1px solid rgba(255,255,255,0.18); color: #f8fafc;
     padding: 8px 12px; border-radius: 10px; font-size: 0.78rem; font-weight: 700; cursor: pointer;
     transition: border-color 0.15s, background 0.15s;
 }
 .dl-q-pill.active, .dl-lang-pill.active {
-    background: var(--accent); border-color: var(--accent); color: #fff;
+    background: var(--accent, #e50914); border-color: var(--accent, #e50914); color: #fff;
 }
+.btn-icon-nav {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    height: 36px; padding: 0 11px; border-radius: 9px; border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(22, 27, 44, 0.92); color: #f8fafc; font-size: 0.78rem; font-weight: 700;
+    cursor: pointer; position: relative; white-space: nowrap;
+}
+.btn-icon-nav:hover { border-color: var(--accent, #e50914); }
 .nav-dl-badge {
-    min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px;
-    background: var(--accent); color: #fff; font-size: 0.65rem; font-weight: 900;
+    min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+    background: var(--accent, #e50914); color: #fff; font-size: 0.66rem; font-weight: 900;
     display: inline-flex; align-items: center; justify-content: center;
 }
-@media (max-width: 640px) {
-    .settings-dialog { max-width: 100%; max-height: 94vh; border-radius: 18px; }
+.live-dl-banner {
+    display: none; position: fixed; right: 16px; bottom: 18px; z-index: 85;
+    width: min(370px, calc(100vw - 24px));
+    background: #121728; border: 1px solid rgba(229, 9, 20, 0.55); border-radius: 15px;
+    padding: 11px 13px; box-shadow: 0 16px 40px rgba(0,0,0,0.82); color: #f8fafc;
+}
+.live-dl-banner.show { display: block; animation: toastIn 0.2s ease; }
+@media (max-width: 767px) {
+    .modal-overlay.fullscreen-mobile { padding: 0; }
+    .modal-overlay.fullscreen-mobile .settings-dialog {
+        max-width: 100%; height: 100vh; height: 100dvh; max-height: 100dvh; border-radius: 0; border: none;
+    }
     .settings-head, .settings-body { padding-left: 14px; padding-right: 14px; }
+    .btn-icon-nav { height: 33px; padding: 0 8px; min-width: 34px; }
+    .btn-icon-nav .nav-lbl-hide-sm { display: none; }
+    .live-dl-banner { left: 12px; right: 12px; width: auto; bottom: calc(74px + env(safe-area-inset-bottom)); }
 }
 .trailer-frame-wrap { width: 100%; aspect-ratio: 16/9; border-radius: 14px; overflow: hidden; background: #000; margin-top: 12px; }
 .trailer-frame-wrap iframe { width: 100%; height: 100%; border: none; }
@@ -5182,13 +5232,15 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3z"/><path d="M20 14v7h-7"/></svg>
                 <span>Phone QR</span>
             </button>
-            <button class="btn-remote-nav" id="btnNavDownloads" onclick="openDownloadsModal()" title="Offline Downloads" aria-label="Open Offline Downloads" style="display:inline-flex;align-items:center;gap:5px;">
+            <button class="btn-icon-nav" id="btnNavDownloads" onclick="openDownloadsModal()" title="Offline Downloads" aria-label="Open Offline Downloads">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span class="nav-lbl-hide-sm">Downloads</span>
                 <span class="nav-dl-badge" id="navDownloadsBadge" style="display:none;">0</span>
             </button>
-            <button class="btn-remote-nav" id="btnNavSettings" onclick="openSettingsModal()" title="Settings, Theme, Profile &amp; Updates" aria-label="Open Settings" style="position:relative;">
+            <button class="btn-icon-nav" id="btnNavSettings" onclick="openSettingsModal()" title="Settings, Theme, Profile &amp; Updates" aria-label="Open Settings">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                 <span id="navProfileAvatar">🎬</span>
+                <span class="nav-lbl-hide-sm">Settings</span>
                 <span id="navSettingsDot" style="display:none;position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:#e50914;box-shadow:0 0 0 2px #0b0e17;"></span>
             </button>
         </div>
@@ -5541,7 +5593,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
             <button class="smart-pill" data-sf="imdb7" onclick="toggleSmartFilter('imdb7', this)">⭐ IMDb 7+</button>
             <button class="smart-pill" id="btnSmartClear" onclick="clearSmartFilters()" style="display:none;">✕ Clear</button>
             <button class="smart-pill" id="btnHomeDownloadsPill" onclick="openDownloadsModal()" style="display:inline-flex;align-items:center;gap:5px;">📥 My Downloads <span id="homeDlCountPill">(0)</span></button>
-            <button class="smart-pill" id="btnAppVersionChip" onclick="openSettingsModal()" style="margin-left:auto;" title="Settings, Profile, Themes &amp; Updates">v2.5.0 • Settings</button>
+            <button class="smart-pill" id="btnAppVersionChip" onclick="openSettingsModal()" style="margin-left:auto;" title="Settings, Profile, Themes &amp; Updates">v2.5.1 • Settings</button>
         </div>
         <div class="search-grid" id="searchGrid"></div>
         <div class="load-more-wrap">
@@ -5702,15 +5754,15 @@ html, body { max-width: 100%; overflow-x: hidden; }
     </div>
 </div>
 
-<!-- Full Dedicated Settings Page Modal -->
-<div class="modal-overlay" id="settingsModalOverlay" onclick="if(event.target===this) closeSettingsModal()" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+<!-- Main Settings Menu Hub Page (Tapping any item opens its own dedicated page) -->
+<div class="modal-overlay fullscreen-mobile" id="settingsModalOverlay" onclick="if(event.target===this) closeSettingsModal()" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
     <div class="settings-dialog">
         <div class="settings-head">
             <div style="display:flex;align-items:center;gap:12px;">
-                <span id="settingsHeadAvatar" style="width:42px;height:42px;border-radius:13px;background:var(--surface-2);border:1px solid var(--border-strong);display:grid;place-items:center;font-size:1.35rem;">🎬</span>
+                <span id="settingsHeadAvatar" style="width:42px;height:42px;border-radius:13px;background:#1a2033;border:1px solid rgba(255,255,255,0.2);display:grid;place-items:center;font-size:1.35rem;">🎬</span>
                 <div>
-                    <h2 id="settingsModalTitle" style="font-size:1.08rem;font-weight:900;color:#fff;">⚙️ StreamHub Settings</h2>
-                    <div id="settingsHeadSub" style="font-size:0.74rem;color:var(--text-muted);margin-top:1px;">Profile, Themes, Private Downloads &amp; App Updates</div>
+                    <h2 id="settingsModalTitle" style="font-size:1.1rem;font-weight:900;color:#fff;">⚙️ Settings</h2>
+                    <div id="settingsHeadSub" style="font-size:0.74rem;color:#94a3b8;margin-top:1px;">StreamHub User • v2.5.1</div>
                 </div>
             </div>
             <button class="btn-close-card" onclick="closeSettingsModal()" aria-label="Close settings">
@@ -5718,12 +5770,93 @@ html, body { max-width: 100%; overflow-x: hidden; }
             </button>
         </div>
         <div class="settings-body">
-            <!-- 1. Profile Settings -->
-            <section class="settings-card">
-                <div class="settings-card-title">
-                    <span>👤 Profile &amp; Language Preference</span>
-                    <button type="button" class="btn-sm btn-vlc-sm" onclick="saveProfileSettings()">Save Profile</button>
+            <button type="button" class="settings-menu-item" onclick="openSettingsSubPage('profilePageModal')">
+                <div class="settings-menu-left">
+                    <span class="settings-menu-ico">👤</span>
+                    <div style="min-width:0;flex:1;">
+                        <div class="settings-menu-title">Profile &amp; Audio Language</div>
+                        <div class="settings-menu-sub" id="menuSubProfile">StreamHub User • Audio: Auto</div>
+                    </div>
                 </div>
+                <span class="settings-menu-chev">›</span>
+            </button>
+
+            <button type="button" class="settings-menu-item" onclick="openSettingsSubPage('themePageModal')">
+                <div class="settings-menu-left">
+                    <span class="settings-menu-ico">🎨</span>
+                    <div style="min-width:0;flex:1;">
+                        <div class="settings-menu-title">App Theme</div>
+                        <div class="settings-menu-sub" id="menuSubTheme">Netflix Crimson</div>
+                    </div>
+                </div>
+                <span class="settings-menu-chev">›</span>
+            </button>
+
+            <button type="button" class="settings-menu-item" onclick="openSettingsSubPage('dlSettingsPageModal')">
+                <div class="settings-menu-left">
+                    <span class="settings-menu-ico">💾</span>
+                    <div style="min-width:0;flex:1;">
+                        <div class="settings-menu-title">Download &amp; Storage Settings</div>
+                        <div class="settings-menu-sub" id="menuSubDlPrefs">Used: 0 MB / 4 GB • 720p • Expire 7d</div>
+                    </div>
+                </div>
+                <span class="settings-menu-chev">›</span>
+            </button>
+
+            <button type="button" class="settings-menu-item" onclick="openDownloadsModal(true)">
+                <div class="settings-menu-left">
+                    <span class="settings-menu-ico">📥</span>
+                    <div style="min-width:0;flex:1;">
+                        <div class="settings-menu-title">My Offline Downloads</div>
+                        <div class="settings-menu-sub" id="menuSubMyDownloads">0 Ready • 0 Active</div>
+                    </div>
+                </div>
+                <span class="settings-menu-chev">›</span>
+            </button>
+
+            <button type="button" class="settings-menu-item" onclick="openUpdateModal(true)" style="background:linear-gradient(135deg, rgba(99,102,241,0.20), rgba(229,9,20,0.12));border-color:rgba(99,102,241,0.48);">
+                <div class="settings-menu-left">
+                    <span class="settings-menu-ico">🔄</span>
+                    <div style="min-width:0;flex:1;">
+                        <div class="settings-menu-title" style="display:flex;align-items:center;gap:8px;">
+                            <span>App Updates</span>
+                            <span id="settingsUpdateBadge" style="font-size:0.68rem;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,0.14);color:#e2e8f0;font-weight:800;">v2.5.1</span>
+                        </div>
+                        <div class="settings-menu-sub" id="settingsUpdateSub">Check naya APK / Instant Update &amp; Release Notes</div>
+                    </div>
+                </div>
+                <span class="settings-menu-chev">›</span>
+            </button>
+
+            <button type="button" class="settings-menu-item" onclick="openSettingsSubPage('toolsPageModal')">
+                <div class="settings-menu-left">
+                    <span class="settings-menu-ico">🛠️</span>
+                    <div style="min-width:0;flex:1;">
+                        <div class="settings-menu-title">Catalog Refresh &amp; Tools</div>
+                        <div class="settings-menu-sub">Refresh latest movies feed &amp; options</div>
+                    </div>
+                </div>
+                <span class="settings-menu-chev">›</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Sub-Page 1: Dedicated Profile & Language Page -->
+<div class="modal-overlay fullscreen-mobile" id="profilePageModal" onclick="if(event.target===this) closeSubPage('profilePageModal')" role="dialog" aria-modal="true" aria-labelledby="profilePageTitle">
+    <div class="settings-dialog">
+        <div class="settings-head">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <button type="button" class="btn-sm btn-copy-sm" onclick="closeSubPage('profilePageModal')">← Settings</button>
+                <h2 id="profilePageTitle" style="font-size:1.05rem;font-weight:900;color:#fff;">👤 Profile &amp; Language</h2>
+            </div>
+            <button class="btn-close-card" onclick="closeAllSettingsPages()" aria-label="Close">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="settings-body">
+            <section class="settings-card">
+                <div class="settings-card-title"><span>Choose Avatar</span></div>
                 <div class="avatar-grid" id="avatarPickerGrid">
                     <button type="button" class="avatar-chip active" data-av="🎬" onclick="pickProfileAvatar(this)">🎬</button>
                     <button type="button" class="avatar-chip" data-av="🍿" onclick="pickProfileAvatar(this)">🍿</button>
@@ -5757,13 +5890,29 @@ html, body { max-width: 100%; overflow-x: hidden; }
                         <option value="Kannada">Kannada</option>
                     </select>
                 </div>
+                <button type="button" class="vlc-banner" style="min-height:46px;font-size:0.92rem;justify-content:center;margin-top:12px;" onclick="saveProfileSettings()">Save Profile</button>
             </section>
+        </div>
+    </div>
+</div>
 
-            <!-- 2. Theme Settings -->
+<!-- Sub-Page 2: Dedicated App Theme Page -->
+<div class="modal-overlay fullscreen-mobile" id="themePageModal" onclick="if(event.target===this) closeSubPage('themePageModal')" role="dialog" aria-modal="true" aria-labelledby="themePageTitle">
+    <div class="settings-dialog">
+        <div class="settings-head">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <button type="button" class="btn-sm btn-copy-sm" onclick="closeSubPage('themePageModal')">← Settings</button>
+                <h2 id="themePageTitle" style="font-size:1.05rem;font-weight:900;color:#fff;">🎨 App Theme</h2>
+            </div>
+            <button class="btn-close-card" onclick="closeAllSettingsPages()" aria-label="Close">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="settings-body">
             <section class="settings-card">
                 <div class="settings-card-title">
-                    <span>🎨 App Theme</span>
-                    <span id="activeThemeBadge" style="font-size:0.72rem;color:var(--text-muted);font-weight:700;">Netflix Crimson</span>
+                    <span>Select App Appearance</span>
+                    <span id="activeThemeBadge" style="font-size:0.74rem;color:#cbd5e1;font-weight:700;">Netflix Crimson</span>
                 </div>
                 <div class="theme-grid" id="themePickerGrid">
                     <button type="button" class="theme-card active" data-theme-id="netflix" onclick="applyAndSaveTheme('netflix')">
@@ -5788,15 +5937,30 @@ html, body { max-width: 100%; overflow-x: hidden; }
                     </button>
                 </div>
             </section>
+        </div>
+    </div>
+</div>
 
-            <!-- 3. Private Offline Downloads & Storage Management -->
+<!-- Sub-Page 3: Dedicated Download & Storage Settings Page -->
+<div class="modal-overlay fullscreen-mobile" id="dlSettingsPageModal" onclick="if(event.target===this) closeSubPage('dlSettingsPageModal')" role="dialog" aria-modal="true" aria-labelledby="dlSettingsPageTitle">
+    <div class="settings-dialog">
+        <div class="settings-head">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <button type="button" class="btn-sm btn-copy-sm" onclick="closeSubPage('dlSettingsPageModal')">← Settings</button>
+                <h2 id="dlSettingsPageTitle" style="font-size:1.05rem;font-weight:900;color:#fff;">💾 Download &amp; Storage</h2>
+            </div>
+            <button class="btn-close-card" onclick="closeAllSettingsPages()" aria-label="Close">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="settings-body">
             <section class="settings-card">
                 <div class="settings-card-title">
-                    <span>📥 Private In-App Downloads &amp; Storage</span>
+                    <span>Private App Storage (.nomedia)</span>
                     <span style="font-size:0.7rem;color:#6ee7b7;background:rgba(16,185,129,0.14);border:1px solid rgba(16,185,129,0.3);padding:2px 8px;border-radius:999px;">🔒 Gallery Hidden</span>
                 </div>
-                <div style="font-size:0.75rem;color:var(--text-muted);line-height:1.4;">
-                    Movies app ke andar private folder (<code style="color:#cbd5e1;">.nomedia</code>) me save hoti hain — phone ki Gallery ya File Manager me show nahi hoti, aur app uninstall karte hi clean ho jati hain.
+                <div style="font-size:0.75rem;color:#94a3b8;line-height:1.45;">
+                    Movies app ke andar private folder (<code style="color:#cbd5e1;">filesDir/offline_movies</code>) me save hoti hain — phone ki Gallery ya File Manager me show nahi hoti, aur app uninstall karte hi delete ho jati hain.
                 </div>
                 <div class="storage-bar-track"><div class="storage-bar-fill" id="setStorageBarFill"></div></div>
                 <div style="display:flex;justify-content:space-between;font-size:0.74rem;color:#cbd5e1;font-weight:700;margin-bottom:10px;">
@@ -5850,37 +6014,41 @@ html, body { max-width: 100%; overflow-x: hidden; }
                         <option value="ask">Ask Every Time</option>
                     </select>
                 </div>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-                    <button type="button" class="btn-sm btn-indigo-sm" style="flex:1 1 160px;min-height:38px;" onclick="closeSettingsModal(); openDownloadsModal();">📂 Open My Downloads</button>
-                    <button type="button" class="btn-sm btn-copy-sm" style="min-height:38px;" onclick="clearAllOfflineDownloads()">🗑️ Clear Offline Storage</button>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+                    <button type="button" class="btn-sm btn-indigo-sm" style="flex:1 1 160px;min-height:40px;" onclick="closeSubPage('dlSettingsPageModal'); openDownloadsModal(true);">📂 Open My Downloads</button>
+                    <button type="button" class="btn-sm btn-copy-sm" style="min-height:40px;" onclick="clearAllOfflineDownloads()">🗑️ Clear Offline Storage</button>
                 </div>
             </section>
+        </div>
+    </div>
+</div>
 
-            <!-- 4. Dedicated App Update Entry (Opens Separate Update Page) -->
-            <button type="button" class="update-entry-card" onclick="openUpdateModal(true)">
-                <div>
-                    <div style="font-size:0.95rem;font-weight:900;display:flex;align-items:center;gap:8px;">
-                        <span>🔄 App Updates &amp; Version</span>
-                        <span id="settingsUpdateBadge" style="font-size:0.7rem;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,0.12);color:#e2e8f0;font-weight:800;">v2.5.0</span>
-                    </div>
-                    <div id="settingsUpdateSub" style="font-size:0.75rem;color:#cbd5e1;margin-top:3px;">Check naya APK / Instant Update, Release Notes &amp; Update Source</div>
-                </div>
-                <span style="font-size:1.2rem;font-weight:900;color:#c7d2fe;">›</span>
+<!-- Sub-Page 4: Dedicated Refresh Movies & Tools Page -->
+<div class="modal-overlay fullscreen-mobile" id="toolsPageModal" onclick="if(event.target===this) closeSubPage('toolsPageModal')" role="dialog" aria-modal="true" aria-labelledby="toolsPageTitle">
+    <div class="settings-dialog">
+        <div class="settings-head">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <button type="button" class="btn-sm btn-copy-sm" onclick="closeSubPage('toolsPageModal')">← Settings</button>
+                <h2 id="toolsPageTitle" style="font-size:1.05rem;font-weight:900;color:#fff;">🛠️ Catalog &amp; Tools</h2>
+            </div>
+            <button class="btn-close-card" onclick="closeAllSettingsPages()" aria-label="Close">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
-
-            <!-- 5. Movies Feed & PC Tools -->
+        </div>
+        <div class="settings-body">
             <section class="settings-card">
-                <div class="settings-card-title"><span>🛠️ Catalog Refresh &amp; Tools</span></div>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                    <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 150px;" onclick="clearCacheAndRefresh()">↻ Refresh Latest Movies</button>
+                <div class="settings-card-title"><span>Catalog &amp; Cache</span></div>
+                <div style="font-size:0.78rem;color:#94a3b8;margin-bottom:12px;line-height:1.45;">
+                    Website par aayi bilkul nayi movies aur series ko turant load karne ke liye Refresh dabayein.
                 </div>
-                <div id="pcSetupToolsCard" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+                <button type="button" class="vlc-banner" style="min-height:44px;font-size:0.9rem;justify-content:center;" onclick="closeAllSettingsPages(); clearCacheAndRefresh();">↻ Refresh Latest Movies</button>
+                <div id="pcSetupToolsCard" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
                     <div style="font-size:0.78rem;font-weight:800;color:var(--gold);margin-bottom:8px;">1-Click Easy PC Setup Tools</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 140px;" onclick="runSetupAction('shortcut')">Add Desktop Shortcut</button>
                         <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 140px;" onclick="runSetupAction('firewall')">Fix Phone Wi-Fi Firewall</button>
-                        <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 120px;" onclick="closeSettingsModal(); openRemoteModal();">📡 PC Remote</button>
-                        <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 120px;" onclick="closeSettingsModal(); openQrModal();">📱 Phone QR</button>
+                        <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 120px;" onclick="closeAllSettingsPages(); openRemoteModal();">📡 PC Remote</button>
+                        <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 120px;" onclick="closeAllSettingsPages(); openQrModal();">📱 Phone QR</button>
                     </div>
                 </div>
             </section>
@@ -5888,61 +6056,66 @@ html, body { max-width: 100%; overflow-x: hidden; }
     </div>
 </div>
 
-<!-- App Updates Dedicated Page Modal -->
-<div class="modal-overlay" id="updateModalOverlay" onclick="if(event.target===this) closeUpdateModal()" role="dialog" aria-modal="true" aria-labelledby="updateModalTitle">
-    <div class="modal-dialog" style="max-width:520px;width:96%;text-align:left;padding:18px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;">
+<!-- Sub-Page 5: App Updates Dedicated Page -->
+<div class="modal-overlay fullscreen-mobile" id="updateModalOverlay" onclick="if(event.target===this) closeUpdateModal()" role="dialog" aria-modal="true" aria-labelledby="updateModalTitle">
+    <div class="settings-dialog">
+        <div class="settings-head">
             <div style="display:flex;align-items:center;gap:10px;min-width:0;">
                 <button type="button" id="btnUpdateBackToSettings" class="btn-sm btn-copy-sm" onclick="closeUpdateModal(); openSettingsModal();" title="Back to Settings">← Settings</button>
                 <div style="min-width:0;">
                     <h2 id="updateModalTitle" style="font-size:1.05rem;font-weight:900;color:#fff;">🔄 App Updates</h2>
-                    <div id="updateMetaLine" style="font-size:0.74rem;color:var(--text-muted);margin-top:2px;">Version loading...</div>
+                    <div id="updateMetaLine" style="font-size:0.74rem;color:#94a3b8;margin-top:2px;">Version loading...</div>
                 </div>
             </div>
-            <button class="btn-close-card" onclick="closeUpdateModal()" aria-label="Close update page">
+            <button class="btn-close-card" onclick="closeAllSettingsPages()" aria-label="Close update page">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
         </div>
 
-        <div style="background:#070910;border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-                <span style="font-size:0.84rem;font-weight:800;color:#fff;">Release Status</span>
-                <button type="button" id="btnCheckUpdateBig" class="btn-sm btn-indigo-sm" onclick="checkAppUpdate(true, true)">🔄 Check for Updates</button>
-            </div>
-            <div id="updateStatusBox" style="font-size:0.82rem;color:var(--text-muted);line-height:1.45;">Checking for updates...</div>
-            <div id="updateDownloadBox" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08);">
-                <div id="updateNotesText" style="font-size:0.78rem;color:#cbd5e1;margin-bottom:10px;white-space:pre-line;line-height:1.45;"></div>
-                <div id="updateProgWrap" style="display:none;background:#1e293b;border-radius:999px;height:8px;overflow:hidden;margin-bottom:10px;">
-                    <div id="updateProgFill" style="height:100%;width:0%;background:var(--netflix);transition:width 0.25s;"></div>
+        <div class="settings-body">
+            <div class="settings-card">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                    <span style="font-size:0.86rem;font-weight:800;color:#fff;">Release Status</span>
+                    <button type="button" id="btnCheckUpdateBig" class="btn-sm btn-indigo-sm" onclick="checkAppUpdate(true, true)">🔄 Check for Updates</button>
                 </div>
-                <button type="button" id="btnApplyUpdate" class="btn-sm btn-vlc-sm" onclick="applyAppUpdateNow()" style="width:100%;min-height:40px;font-size:0.85rem;display:none;">Download &amp; Install Update</button>
-                <button type="button" id="btnOtaPyUpdate" class="btn-sm btn-vlc-sm" onclick="applyOtaPyUpdateNow()" style="display:none;width:100%;min-height:42px;font-size:0.86rem;margin-bottom:8px;">⚡ Instant Update (Fast ~0.5 MB)</button>
-                <button type="button" id="btnApkUpdate" class="btn-sm btn-vlc-sm" onclick="applyAndroidApkUpdateNow()" style="display:none;width:100%;min-height:42px;font-size:0.86rem;">📱 Download &amp; Install APK</button>
-                <a id="linkApkExternal" href="#" target="_blank" rel="noopener" onclick="if(window.StreamHubAndroid&&window.StreamHubAndroid.openExternalUrl){window.StreamHubAndroid.openExternalUrl(this.href);return false;}" style="display:none;margin-top:8px;text-align:center;font-size:0.76rem;color:#93c5fd;text-decoration:underline;">Ya Browser se APK Download Karein</a>
+                <div id="updateStatusBox" style="font-size:0.82rem;color:#cbd5e1;line-height:1.45;">Checking for updates...</div>
+                <div id="updateDownloadBox" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08);">
+                    <div id="updateNotesText" style="font-size:0.78rem;color:#cbd5e1;margin-bottom:10px;white-space:pre-line;line-height:1.45;"></div>
+                    <div id="updateProgWrap" style="display:none;background:#1e293b;border-radius:999px;height:8px;overflow:hidden;margin-bottom:10px;">
+                        <div id="updateProgFill" style="height:100%;width:0%;background:var(--netflix);transition:width 0.25s;"></div>
+                    </div>
+                    <button type="button" id="btnApplyUpdate" class="btn-sm btn-vlc-sm" onclick="applyAppUpdateNow()" style="width:100%;min-height:40px;font-size:0.85rem;display:none;">Download &amp; Install Update</button>
+                    <button type="button" id="btnOtaPyUpdate" class="btn-sm btn-vlc-sm" onclick="applyOtaPyUpdateNow()" style="display:none;width:100%;min-height:42px;font-size:0.86rem;margin-bottom:8px;">⚡ Instant Update (Fast ~0.5 MB)</button>
+                    <button type="button" id="btnApkUpdate" class="btn-sm btn-vlc-sm" onclick="applyAndroidApkUpdateNow()" style="display:none;width:100%;min-height:42px;font-size:0.86rem;">📱 Download &amp; Install APK</button>
+                    <a id="linkApkExternal" href="#" target="_blank" rel="noopener" onclick="if(window.StreamHubAndroid&&window.StreamHubAndroid.openExternalUrl){window.StreamHubAndroid.openExternalUrl(this.href);return false;}" style="display:none;margin-top:8px;text-align:center;font-size:0.76rem;color:#93c5fd;text-decoration:underline;">Ya Browser se APK Download Karein</a>
+                </div>
             </div>
-        </div>
 
-        <details style="background:#070910;border:1px solid var(--border);border-radius:12px;padding:12px;">
-            <summary style="cursor:pointer;font-size:0.76rem;color:var(--text-muted);font-weight:700;">Advanced: Update Source (GitHub Repo / URL)</summary>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-                <input type="text" id="updateFeedInput" class="input-control" style="flex:1 1 200px;min-width:0;background:#0b0e17;border:1px solid var(--border-strong);color:#fff;border-radius:9px;padding:8px 10px;font-size:0.82rem;outline:none;" placeholder="e.g. khushal-jangid/streamhub">
-                <button type="button" id="btnCheckNow" class="btn-sm btn-indigo-sm" onclick="saveUpdateFeedAndCheck()">Save &amp; Check</button>
-            </div>
-        </details>
+            <details class="settings-card">
+                <summary style="cursor:pointer;font-size:0.78rem;color:#cbd5e1;font-weight:700;">Advanced: Update Source (GitHub Repo / URL)</summary>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+                    <input type="text" id="updateFeedInput" class="input-control" style="flex:1 1 200px;min-width:0;background:#0b0e17;border:1px solid var(--border-strong);color:#fff;border-radius:9px;padding:8px 10px;font-size:0.82rem;outline:none;" placeholder="e.g. khushal-jangid/streamhub">
+                    <button type="button" id="btnCheckNow" class="btn-sm btn-indigo-sm" onclick="saveUpdateFeedAndCheck()">Save &amp; Check</button>
+                </div>
+            </details>
+        </div>
     </div>
 </div>
 
-<!-- My Private Offline Downloads Manager Modal -->
-<div class="modal-overlay" id="downloadsModalOverlay" onclick="if(event.target===this) closeDownloadsModal()" role="dialog" aria-modal="true" aria-labelledby="downloadsModalTitle">
+<!-- Sub-Page 6 / Downloads Dedicated Page -->
+<div class="modal-overlay fullscreen-mobile" id="downloadsModalOverlay" onclick="if(event.target===this) closeDownloadsModal()" role="dialog" aria-modal="true" aria-labelledby="downloadsModalTitle">
     <div class="settings-dialog">
         <div class="settings-head">
-            <div>
-                <h2 id="downloadsModalTitle" style="font-size:1.06rem;font-weight:900;color:#fff;">📥 My Offline Downloads</h2>
-                <div style="font-size:0.73rem;color:#6ee7b7;margin-top:2px;">🔒 Saved privately in App Storage (Gallery/Files se hidden • Bina net ke play karein)</div>
+            <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
+                <button type="button" class="btn-sm btn-copy-sm" onclick="closeDownloadsModal()">← Back</button>
+                <div style="min-width:0;">
+                    <h2 id="downloadsModalTitle" style="font-size:1.05rem;font-weight:900;color:#fff;">📥 My Downloads</h2>
+                    <div style="font-size:0.7rem;color:#6ee7b7;margin-top:1px;">🔒 Private App Storage • Bina net ke play karein</div>
+                </div>
             </div>
-            <div style="display:flex;gap:8px;align-items:center;">
-                <button type="button" class="btn-sm btn-copy-sm" onclick="closeDownloadsModal(); openSettingsModal();" title="Storage Limit &amp; Auto-Delete Settings">⚙️</button>
-                <button class="btn-close-card" onclick="closeDownloadsModal()" aria-label="Close downloads">
+            <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+                <button type="button" class="btn-sm btn-copy-sm" onclick="closeDownloadsModal(); openSettingsModal(); openSettingsSubPage('dlSettingsPageModal');" title="Storage Limit &amp; Auto-Delete Settings">⚙️</button>
+                <button class="btn-close-card" onclick="closeAllSettingsPages()" aria-label="Close downloads">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
             </div>
@@ -5951,7 +6124,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
             <div class="settings-card" style="padding:12px 14px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:0.77rem;font-weight:700;color:#e2e8f0;">
                     <span id="dlModalStorageText">Used: 0 MB / 4 GB Limit</span>
-                    <span id="dlModalPolicyText" style="color:var(--text-muted);font-size:0.71rem;">Auto-Delete Watched: ON • Expire: 7d</span>
+                    <span id="dlModalPolicyText" style="color:#94a3b8;font-size:0.71rem;">Auto-Delete Watched: ON • Expire: 7d</span>
                 </div>
                 <div class="storage-bar-track"><div class="storage-bar-fill" id="dlModalStorageFill"></div></div>
             </div>
@@ -6008,9 +6181,10 @@ html, body { max-width: 100%; overflow-x: hidden; }
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
             <span>Catalog</span>
         </button>
-        <button class="dock-btn" onclick="focusSearchMobile()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <span>Search</span>
+        <button class="dock-btn" id="dockBtnDownloads" onclick="openDownloadsModal()" style="position:relative;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Downloads</span>
+            <span class="nav-dl-badge" id="dockDownloadsBadge" style="display:none;position:absolute;top:2px;right:10px;min-width:16px;height:16px;font-size:0.6rem;">0</span>
         </button>
         <button class="dock-btn" id="dockBtnRemote" onclick="isAndroidApp() ? jumpCategory('hollywood-movies') : openRemoteModal()">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3"/><circle cx="12" cy="9" r="2"/><line x1="10" y1="15" x2="14" y2="15"/></svg>
@@ -6023,6 +6197,22 @@ html, body { max-width: 100%; overflow-x: hidden; }
         </button>
     </div>
 </nav>
+
+<!-- Live In-App Download Progress Notification Banner -->
+<div class="live-dl-banner" id="liveDownloadBanner" role="status" aria-live="polite">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <div id="liveDlTitle" style="font-size:0.8rem;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;">Downloading...</div>
+        <button type="button" onclick="hideLiveDownloadBanner()" style="background:transparent;border:none;color:#94a3b8;font-size:0.9rem;font-weight:900;cursor:pointer;padding:2px 6px;" title="Minimize notification">✕</button>
+    </div>
+    <div class="storage-bar-track" style="height:6px;margin:7px 0 5px;"><div class="storage-bar-fill" id="liveDlProgFill"></div></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+        <div id="liveDlMeta" style="font-size:0.71rem;color:#cbd5e1;font-weight:700;">0% • 0 MB</div>
+        <div style="display:flex;gap:6px;">
+            <button type="button" id="liveDlToggleBtn" class="btn-sm btn-indigo-sm" style="padding:4px 9px;font-size:0.7rem;" onclick="toggleLiveDownloadPause()">⏸ Pause</button>
+            <button type="button" class="btn-sm btn-vlc-sm" style="padding:4px 9px;font-size:0.7rem;" onclick="openDownloadsModal()">View</button>
+        </div>
+    </div>
+</div>
 
 <!-- Non-Blocking Toast Container -->
 <div class="toast-wrap" id="toastContainer" aria-live="polite"></div>
@@ -6146,7 +6336,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
     }
 
     window.__shAndroidHandleBack = function() {
-        const modals = ['downloadPickerModal', 'inlineWebPlayerModal', 'trailerModalOverlay', 'qrModalOverlay', 'remoteModalOverlay', 'updateModalOverlay', 'downloadsModalOverlay', 'settingsModalOverlay'];
+        const modals = ['downloadPickerModal', 'inlineWebPlayerModal', 'trailerModalOverlay', 'qrModalOverlay', 'remoteModalOverlay', 'profilePageModal', 'themePageModal', 'dlSettingsPageModal', 'toolsPageModal', 'updateModalOverlay', 'downloadsModalOverlay', 'settingsModalOverlay'];
         for (const id of modals) {
             const el = document.getElementById(id);
             if (el && el.classList.contains('open')) {
@@ -6543,11 +6733,17 @@ html, body { max-width: 100%; overflow-x: hidden; }
         loadHomeHub();
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.get('show_updates') === '1') {
-            setTimeout(() => openUpdateModal(false), 450);
+            dismissIntro();
+            setTimeout(() => openUpdateModal(false), 120);
         } else if (urlParams.get('show_settings') === '1') {
-            setTimeout(() => openSettingsModal(), 450);
+            dismissIntro();
+            setTimeout(() => openSettingsModal(), 120);
+        } else if (urlParams.get('show_downloads') === '1') {
+            dismissIntro();
+            setTimeout(() => openDownloadsModal(), 120);
         } else if (urlParams.get('open') === 'qr') {
-            setTimeout(() => openQrModal(), 450);
+            dismissIntro();
+            setTimeout(() => openQrModal(), 120);
         }
     });
 
@@ -8360,6 +8556,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
         });
         const badge = document.getElementById('activeThemeBadge');
         if (badge) badge.textContent = THEME_META[th].name;
+        const mSub = document.getElementById('menuSubTheme');
+        if (mSub) mSub.textContent = THEME_META[th].name;
     }
 
     function applyProfileUi(profile) {
@@ -8372,7 +8570,9 @@ html, body { max-width: 100%; overflow-x: hidden; }
         const hdAv = document.getElementById('settingsHeadAvatar');
         if (hdAv) hdAv.textContent = av;
         const hdSub = document.getElementById('settingsHeadSub');
-        if (hdSub) hdSub.textContent = `${nm} • Audio: ${lg} • v${userSettingsState.version || '2.5.0'}`;
+        if (hdSub) hdSub.textContent = `${nm} • Audio: ${lg} • v${userSettingsState.version || '2.5.1'}`;
+        const mProf = document.getElementById('menuSubProfile');
+        if (mProf) mProf.textContent = `${nm} • Audio: ${lg}`;
         const nmInp = document.getElementById('setProfileName');
         if (nmInp && document.activeElement !== nmInp) nmInp.value = nm;
         const lgSel = document.getElementById('setProfileLang');
@@ -8416,17 +8616,39 @@ html, body { max-width: 100%; overflow-x: hidden; }
         if (dqSel) dqSel.value = String(p.default_quality || '720p');
 
         const badge = document.getElementById('navDownloadsBadge');
+        const dockBadge = document.getElementById('dockDownloadsBadge');
         const totCnt = Number(s.total_count || 0);
+        const activeCnt = Number(s.active_count || 0);
+        let pctLabel = String(totCnt);
+        const actItem = offlineDownloadsList.find(x => x.status === 'downloading' || x.status === 'queued');
+        if (actItem && activeCnt > 0) {
+            pctLabel = Math.round(Number(actItem.pct || 0)) + '%';
+        }
         if (badge) {
             badge.style.display = totCnt > 0 ? 'inline-flex' : 'none';
-            badge.textContent = (s.active_count > 0) ? `⬇${s.active_count}` : String(totCnt);
+            badge.textContent = pctLabel;
+        }
+        if (dockBadge) {
+            dockBadge.style.display = totCnt > 0 ? 'inline-flex' : 'none';
+            dockBadge.textContent = pctLabel;
         }
         const libCnt = document.getElementById('libDlCount');
         if (libCnt) libCnt.textContent = `(${totCnt})`;
         const homeCnt = document.getElementById('homeDlCountPill');
-        if (homeCnt) homeCnt.textContent = (s.active_count > 0) ? `(${s.active_count} active)` : `(${totCnt})`;
+        if (homeCnt) homeCnt.textContent = (s.active_count > 0) ? `(${Math.round(actItem ? actItem.pct : 0)}% active)` : `(${totCnt})`;
+        const mDlPrefs = document.getElementById('menuSubDlPrefs');
+        if (mDlPrefs) {
+            const expTxt = Number(p.auto_expire_days) > 0 ? `${p.auto_expire_days}d` : 'Never';
+            mDlPrefs.textContent = `Used: ${fmtBytes(used)} / ${limLabel} • ${String(p.default_quality || '720p').toUpperCase()} • Expire ${expTxt}`;
+        }
+        const mMyDl = document.getElementById('menuSubMyDownloads');
+        if (mMyDl) {
+            mMyDl.textContent = (activeCnt > 0 && actItem)
+                ? `⬇ Downloading ${Math.round(actItem.pct || 0)}% (${fmtBytes(actItem.downloaded_bytes)})`
+                : `${s.completed_count || 0} Ready • ${s.paused_count || 0} Paused`;
+        }
 
-        const needsWake = Number(s.active_count || 0) > 0;
+        const needsWake = activeCnt > 0;
         if (lastWakeLockActive !== needsWake) {
             lastWakeLockActive = needsWake;
             if (window.StreamHubAndroid && typeof window.StreamHubAndroid.setDownloadWakeLock === 'function') {
@@ -8450,6 +8672,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
     }
 
     async function openSettingsModal() {
+        dismissIntro();
         const ov = document.getElementById('settingsModalOverlay');
         if (ov) ov.classList.add('open');
         try {
@@ -8467,6 +8690,29 @@ html, body { max-width: 100%; overflow-x: hidden; }
     function closeSettingsModal() {
         const ov = document.getElementById('settingsModalOverlay');
         if (ov) ov.classList.remove('open');
+    }
+
+    function openSettingsSubPage(id) {
+        dismissIntro();
+        const ov = document.getElementById(id);
+        if (ov) ov.classList.add('open');
+    }
+
+    function closeSubPage(id) {
+        const ov = document.getElementById(id);
+        if (ov) ov.classList.remove('open');
+    }
+
+    function closeAllSettingsPages() {
+        ['profilePageModal', 'themePageModal', 'dlSettingsPageModal', 'toolsPageModal', 'updateModalOverlay', 'downloadsModalOverlay', 'settingsModalOverlay'].forEach(id => {
+            const ov = document.getElementById(id);
+            if (ov) ov.classList.remove('open');
+        });
+        if (offlinePollTimer) {
+            const activeCnt = Number((userSettingsState.storage && userSettingsState.storage.active_count) || 0);
+            if (activeCnt === 0) { clearInterval(offlinePollTimer); offlinePollTimer = null; }
+        }
+        renderLiveDownloadBanner();
     }
 
     function pickProfileAvatar(btn) {
@@ -8700,11 +8946,13 @@ html, body { max-width: 100%; overflow-x: hidden; }
         if (!list.length) {
             const sel = document.getElementById('qualitySelect');
             if (sel && sel.value) {
-                list.push({ label: sel.options[sel.selectedIndex]?.textContent || 'Selected Quality', hdhub_link: sel.value, size_label: '', quality_label: 'HD' });
+                const selOpt = sel.options[sel.selectedIndex];
+                list.push({ label: (selOpt && selOpt.textContent) || 'Selected Quality', hdhub_link: sel.value, size_label: '', quality_label: 'HD' });
             }
         }
+        const cardTitleEl = document.getElementById('movieCardTitle');
         openDownloadPicker({
-            title: currentMovieMeta ? currentMovieMeta.title : (document.getElementById('movieCardTitle')?.textContent || 'Movie'),
+            title: currentMovieMeta ? currentMovieMeta.title : ((cardTitleEl && cardTitleEl.textContent) || 'Movie'),
             poster: currentMovieMeta ? currentMovieMeta.thumbnail : '',
             media_key: currentMovieMeta ? (currentMovieMeta.permalink || currentMovieMeta.title) : '',
             options: list
@@ -8753,6 +9001,11 @@ html, body { max-width: 100%; overflow-x: hidden; }
         });
     }
 
+    function _getActiveResSizeStr() {
+        const rs = document.getElementById('resSize');
+        return (rs && rs.textContent) ? rs.textContent.replace(/^Size:\s*/i, '') : '';
+    }
+
     function openDownloadPickerFromActive() {
         if (activeZipEntries && activeZipEntries.length && activeZipIndex >= 0) {
             openDownloadPickerForZipEp(activeZipIndex);
@@ -8770,7 +9023,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 compress_method: activeCompressMethod || 0,
                 backup_urls: directMirrors.map(m => m.url),
                 hdhub_link: activeSourceLink || '',
-                size_label: document.getElementById('resSize')?.textContent?.replace(/^Size:\s*/i, '') || '',
+                size_label: _getActiveResSizeStr(),
                 quality_label: inferQualityLabel(activeTitle, activeCompressMethod)
             });
         }
@@ -8781,7 +9034,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                     stream_url: m.url,
                     seek_url: m.seek_url || activeSeekUrl || '',
                     hdhub_link: activeSourceLink || '',
-                    size_label: document.getElementById('resSize')?.textContent?.replace(/^Size:\s*/i, '') || '',
+                    size_label: _getActiveResSizeStr(),
                     quality_label: inferQualityLabel(activeTitle, 0)
                 });
             }
@@ -8802,6 +9055,59 @@ html, body { max-width: 100%; overflow-x: hidden; }
             parent_key: activeParentKey || '',
             options: opts
         });
+    }
+
+    let liveBannerHiddenKey = '';
+    function hideLiveDownloadBanner() {
+        const cur = offlineDownloadsList.find(x => x.status === 'downloading' || x.status === 'queued') || offlineDownloadsList[0];
+        liveBannerHiddenKey = cur ? `${cur.id}:${cur.status}` : 'hidden';
+        const b = document.getElementById('liveDownloadBanner');
+        if (b) b.classList.remove('show');
+    }
+
+    function toggleLiveDownloadPause() {
+        const cur = offlineDownloadsList.find(x => x.status === 'downloading' || x.status === 'queued' || x.status === 'paused' || x.status === 'error');
+        if (!cur) return;
+        if (cur.status === 'downloading' || cur.status === 'queued') {
+            downloadAction(cur.id, 'pause');
+        } else {
+            downloadAction(cur.id, 'resume');
+        }
+    }
+
+    function renderLiveDownloadBanner() {
+        const b = document.getElementById('liveDownloadBanner');
+        if (!b) return;
+        const modalOpen = Boolean(document.getElementById('downloadsModalOverlay') && document.getElementById('downloadsModalOverlay').classList.contains('open'));
+        const cur = offlineDownloadsList.find(x => x.status === 'downloading' || x.status === 'queued')
+            || offlineDownloadsList.find(x => x.status === 'paused' || x.status === 'error');
+        if (!cur || modalOpen) {
+            b.classList.remove('show');
+            return;
+        }
+        const curKey = `${cur.id}:${cur.status}`;
+        if (liveBannerHiddenKey === curKey && cur.status !== 'downloading') {
+            b.classList.remove('show');
+            return;
+        }
+        const pct = Number(cur.pct || 0);
+        const dlStr = fmtBytes(cur.downloaded_bytes);
+        const totStr = cur.total_bytes > 0 ? fmtBytes(cur.total_bytes) : (cur.size_label || '...');
+        const spd = Number(cur.speed_bps || 0);
+        let etaStr = '';
+        if (cur.status === 'downloading' && spd > 0 && cur.total_bytes > cur.downloaded_bytes) {
+            const remSec = Math.round((cur.total_bytes - cur.downloaded_bytes) / spd);
+            etaStr = remSec >= 3600 ? ` • ${Math.floor(remSec/3600)}h ${Math.floor((remSec%3600)/60)}m` : (remSec >= 60 ? ` • ${Math.floor(remSec/60)}m left` : ` • ${remSec}s`);
+        }
+        const ttlEl = document.getElementById('liveDlTitle');
+        const fillEl = document.getElementById('liveDlProgFill');
+        const metaEl = document.getElementById('liveDlMeta');
+        const togBtn = document.getElementById('liveDlToggleBtn');
+        if (ttlEl) ttlEl.textContent = (cur.status === 'downloading' ? '⬇ Downloading: ' : (cur.status === 'queued' ? '⏳ Connecting: ' : '⏸ Paused: ')) + cur.title;
+        if (fillEl) fillEl.style.width = Math.min(100, Math.max(0, pct)) + '%';
+        if (metaEl) metaEl.textContent = `${pct.toFixed(1)}% • ${dlStr} / ${totStr}${spd > 0 ? ' • ' + fmtBytes(spd) + '/s' : ''}${etaStr}`;
+        if (togBtn) togBtn.textContent = (cur.status === 'downloading' || cur.status === 'queued') ? '⏸ Pause' : '▶ Resume';
+        b.classList.add('show');
     }
 
     async function confirmStartDownload() {
@@ -8838,9 +9144,13 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 showToast(data.error || 'Download start nahi hua', 'err');
                 return;
             }
+            liveBannerHiddenKey = '';
             closeDownloadPicker();
+            if (window.StreamHubAndroid && typeof window.StreamHubAndroid.notifyDownloadMonitor === 'function') {
+                try { window.StreamHubAndroid.notifyDownloadMonitor(); } catch (e) {}
+            }
             await refreshDownloadsState(true);
-            showToast(data.message || 'Download started! Tap to view', 'ok', () => openDownloadsModal());
+            showToast(data.message || 'Download started! Live bar me progress dekhein', 'ok', () => openDownloadsModal());
         } catch (e) {
             showToast('Download request error: ' + e.message, 'err');
         } finally {
@@ -8849,6 +9159,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
     }
 
     async function openDownloadsModal() {
+        dismissIntro();
         const ov = document.getElementById('downloadsModalOverlay');
         if (ov) ov.classList.add('open');
         await refreshDownloadsState(true);
@@ -8862,13 +9173,15 @@ html, body { max-width: 100%; overflow-x: hidden; }
             clearInterval(offlinePollTimer);
             offlinePollTimer = null;
         }
+        renderLiveDownloadBanner();
     }
 
     function _syncDownloadPoller(activeCount) {
-        const modalOpen = document.getElementById('downloadsModalOverlay')?.classList.contains('open');
+        const dlOv = document.getElementById('downloadsModalOverlay');
+        const modalOpen = Boolean(dlOv && dlOv.classList.contains('open'));
         if (activeCount > 0 || modalOpen) {
             if (!offlinePollTimer) {
-                offlinePollTimer = setInterval(() => refreshDownloadsState(false), modalOpen ? 1000 : 2500);
+                offlinePollTimer = setInterval(() => refreshDownloadsState(false), modalOpen ? 1000 : 1800);
             }
         } else if (offlinePollTimer) {
             clearInterval(offlinePollTimer);
@@ -8886,6 +9199,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 if (data.prefs) userSettingsState.download_prefs = data.prefs;
                 renderStorageSummaryUi(data.storage, data.prefs);
                 renderDownloadsList();
+                renderLiveDownloadBanner();
                 _syncDownloadPoller(Number((data.storage && data.storage.active_count) || 0));
             }
         } catch (e) {}
@@ -8968,8 +9282,17 @@ html, body { max-width: 100%; overflow-x: hidden; }
             const data = await resp.json();
             if (data && data.success) {
                 offlineDownloadsList = data.items || [];
+                userSettingsState.storage = data.storage || userSettingsState.storage;
+                if (data.prefs) userSettingsState.download_prefs = data.prefs;
+                if (action === 'resume') {
+                    liveBannerHiddenKey = '';
+                    if (window.StreamHubAndroid && typeof window.StreamHubAndroid.notifyDownloadMonitor === 'function') {
+                        try { window.StreamHubAndroid.notifyDownloadMonitor(); } catch (e) {}
+                    }
+                }
                 renderStorageSummaryUi(data.storage, data.prefs);
                 renderDownloadsList();
+                renderLiveDownloadBanner();
                 _syncDownloadPoller(Number((data.storage && data.storage.active_count) || 0));
             } else if (data && data.error) {
                 showToast(data.error, 'err');
@@ -9021,6 +9344,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
     let updatePollTimer = null;
 
     function openUpdateModal(fromSettings) {
+        dismissIntro();
         const ov = document.getElementById('updateModalOverlay');
         if (ov) ov.classList.add('open');
         const bk = document.getElementById('btnUpdateBackToSettings');
@@ -10406,6 +10730,8 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
         if path in ('/', '/index.html'):
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            self.send_header('Pragma', 'no-cache')
             self.end_headers()
             self.wfile.write(HTML_PAGE.encode('utf-8'))
             return

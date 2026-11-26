@@ -1,7 +1,8 @@
 ﻿param(
     [string]$Version = "",
     [string]$Notes = "",
-    [int]$MinApkVersionCode = 0
+    [int]$MinApkVersionCode = 0,
+    [switch]$ApkOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -70,27 +71,42 @@ if (-not (Test-Path $builtApk)) { throw "Built APK not found at $builtApk" }
 Copy-Item $builtApk $ApkOut -Force
 Write-Host "    APK copied -> $ApkOut"
 
-# 5. Build Windows EXE
-Write-Host "[3/6] Building Windows StreamHub.exe (PyInstaller)..."
-Push-Location $StreamHubDir
-try {
-    python build_exe.py
-    if ($LASTEXITCODE -ne 0) { throw "build_exe.py failed with exit code $LASTEXITCODE" }
-} finally {
-    Pop-Location
+# 5. Build Windows EXE (unless -ApkOnly)
+$exeSha = ""
+$exeSize = 0
+$exeUrl = "https://github.com/$Repo/releases/download/$Tag/StreamHub.exe"
+if ($ApkOnly) {
+    Write-Host "[3/6] Skipping Windows EXE build (-ApkOnly mode)..."
+    if (Test-Path $ManifestOut) {
+        try {
+            $prevM = Get-Content $ManifestOut -Raw | ConvertFrom-Json
+            if ($prevM.download_url) { $exeUrl = [string]$prevM.download_url }
+            if ($prevM.sha256) { $exeSha = [string]$prevM.sha256 }
+            if ($prevM.size_bytes) { $exeSize = [int64]$prevM.size_bytes }
+        } catch {}
+    }
+} else {
+    Write-Host "[3/6] Building Windows StreamHub.exe (PyInstaller)..."
+    Push-Location $StreamHubDir
+    try {
+        python build_exe.py
+        if ($LASTEXITCODE -ne 0) { throw "build_exe.py failed with exit code $LASTEXITCODE" }
+    } finally {
+        Pop-Location
+    }
+    $exeSha = (Get-FileHash $ExeOut -Algorithm SHA256).Hash.ToLower()
+    $exeSize = (Get-Item $ExeOut).Length
 }
 
 # 6. Compute hashes and write unified dist/version.json (EXE + APK + Instant OTA Python)
 Write-Host "[4/6] Generating version.json with SHA-256 checksums..."
-$exeSha = (Get-FileHash $ExeOut -Algorithm SHA256).Hash.ToLower()
-$exeSize = (Get-Item $ExeOut).Length
 $apkSha = (Get-FileHash $ApkOut -Algorithm SHA256).Hash.ToLower()
 $apkSize = (Get-Item $ApkOut).Length
 $pySha = (Get-FileHash $AndroidPy -Algorithm SHA256).Hash.ToLower()
 
 $manifest = [ordered]@{
     version = $Version
-    download_url = "https://github.com/$Repo/releases/download/$Tag/StreamHub.exe"
+    download_url = $exeUrl
     sha256 = $exeSha
     size_bytes = $exeSize
     apk_download_url = "https://github.com/$Repo/releases/download/$Tag/StreamHub.apk"
@@ -133,11 +149,15 @@ $Notes
 - **Windows PC App**: ``StreamHub.exe`` (1-click auto-updater)
 "@
 
+    $uploadFiles = @($ApkOut, $AndroidPy, $ManifestOut)
+    if (-not $ApkOnly -and (Test-Path $ExeOut)) {
+        $uploadFiles = @($ExeOut) + $uploadFiles
+    }
     if ($exists) {
-        gh release upload $Tag $ExeOut $ApkOut $AndroidPy $ManifestOut --clobber
+        gh release upload $Tag @uploadFiles --clobber
         gh release edit $Tag --title "StreamHub $Tag" --notes $releaseNotes
     } else {
-        gh release create $Tag $ExeOut $ApkOut $AndroidPy $ManifestOut --title "StreamHub $Tag" --notes $releaseNotes
+        gh release create $Tag @uploadFiles --title "StreamHub $Tag" --notes $releaseNotes
     }
 } finally {
     Pop-Location

@@ -1,13 +1,13 @@
 {
-    "version":  "2.5.0",
+    "version":  "2.5.1",
     "download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.0/StreamHub.exe",
     "sha256":  "7723fd9cd24e81c3efbf87c8184fecdbb37191504e6e82c85a7adcd7a5a2250c",
     "size_bytes":  87698023,
-    "apk_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.0/StreamHub.apk",
-    "apk_sha256":  "2318bb007f15273c2ffc2b953e4621b5e0e4893d90747b11e42d55df695b64e4",
-    "apk_size_bytes":  78015276,
-    "py_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.0/streamhub_app.py",
-    "py_sha256":  "7d10db66d993545cddf70b27d8ba960de477de3ef6a02653e1910a61ec9ad39d",
-    "min_apk_version_code":  4,
-    "notes":  "v2.5.0: Full Settings Page (Profile, Live Themes: Netflix/AMOLED/Prime/Gold, Storage Cap \u0026 Auto-Delete), Dedicated App Update Page inside Settings, \u0026 Netflix-style Private In-App Offline Downloads (Quality + Language selection, Pause/Resume, Offline Playback)."
+    "apk_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.1/StreamHub.apk",
+    "apk_sha256":  "cab19b9e170f9a012d282ed36868be36e8ea822d9e5708998473c4f8d1a40b5a",
+    "apk_size_bytes":  78022552,
+    "py_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.1/streamhub_app.py",
+    "py_sha256":  "2977f64f5c3c05043d18dca40560ddce28be0650659fc3273ed78824beba1c1a",
+    "min_apk_version_code":  5,
+    "notes":  "v2.5.1 (Android APK): Fixed Settings \u0026 Downloads black screen on Android WebView, split Settings Hub into separate pages (Profile, Theme, Download \u0026 Storage, My Downloads, Updates, Tools), added live in-app Download Progress Banner + Mobile Dock Downloads tab + Android Notification Tray progress alerts."
 }
