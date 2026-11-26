@@ -53,7 +53,7 @@ if sys.platform == 'win32':
     except Exception:
         pass
 
-APP_VERSION = "2.5.6"
+APP_VERSION = "2.5.7"
 DEFAULT_UPDATE_URL = "khushal-jangid/streamhub"
 STREAMHUB_UPDATE_URL = os.environ.get("STREAMHUB_UPDATE_URL", "").strip()
 _ENV_DATA_DIR = os.environ.get("STREAMHUB_DATA_DIR", "").strip()
@@ -3709,8 +3709,10 @@ def resolve_hubcloud(input_url):
 
         # ── Smart Mirror Prioritization for Speed (250Mbps+) + Seeking in VLC ──
         r2_m         = next((m for m in mirrors if m['type'] in ('r2', 'r2_dev') and m['alive']), None)
+        r2_any_m     = next((m for m in mirrors if m['type'] in ('r2', 'r2_dev')), None)
         google_cdn_m = next((m for m in mirrors if m['type'] == 'google_cdn' and m['alive']), None)
         pd_m         = next((m for m in mirrors if m['type'] == 'pixeldrain' and m['alive']), None)
+        pd_any_m     = next((m for m in mirrors if m['type'] == 'pixeldrain'), None)
         worker_m     = next((m for m in mirrors if m['type'] == 'worker' and m['alive']), None)
         any_worker_m = next((m for m in mirrors if m['type'] == 'worker'), None)
 
@@ -3718,15 +3720,19 @@ def resolve_hubcloud(input_url):
             m['url'] for m in mirrors
             if m.get('alive') and m.get('type') != 'zipdisk' and is_range_capable(m.get('url', ''))
         ]
-        fallback_range_urls = alive_range_urls
+        extra_range_urls = [
+            m['url'] for m in mirrors
+            if not m.get('alive') and m.get('type') != 'zipdisk' and is_range_capable(m.get('url', '')) and m['url'] not in alive_range_urls
+        ]
+        fallback_range_urls = alive_range_urls + extra_range_urls
 
-        # Prefer R2 (30MB/s + native 206) > Google CDN (30MB/s + 0% 403, paired only with ALIVE Worker/PD seek_url) > PixelDrain > Worker
+        # Prefer R2 (30MB/s + native 206) > Google CDN paired with Range mirror (alive OR hedged worker/pd/r2) > PixelDrain > Worker
         if r2_m:
             best_stream_url = r2_m['url']
             seek_stream_url = r2_m['url']
         elif google_cdn_m:
             best_stream_url = google_cdn_m['url']
-            seek_cand = worker_m or pd_m
+            seek_cand = worker_m or pd_m or any_worker_m or pd_any_m or r2_any_m
             seek_stream_url = seek_cand['url'] if seek_cand else None
         elif pd_m:
             best_stream_url = pd_m['url']
@@ -3737,7 +3743,7 @@ def resolve_hubcloud(input_url):
         else:
             working_mirrors = [m for m in mirrors if m['alive']]
             best_stream_url = working_mirrors[0]['url'] if working_mirrors else (mirrors[0]['url'] if mirrors else None)
-            seek_cand = worker_m or pd_m
+            seek_cand = r2_any_m or worker_m or pd_m or any_worker_m or pd_any_m
             seek_stream_url = seek_cand['url'] if seek_cand else (best_stream_url if is_range_capable(best_stream_url) else None)
 
         if not best_stream_url:
@@ -4189,9 +4195,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     position: sticky;
     top: 0;
     z-index: 60;
-    background: rgba(9, 9, 11, 0.92);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background: rgba(9, 9, 11, 0.97);
     border-bottom: 1px solid var(--border);
     transition: background 0.2s, border-color 0.2s;
 }
@@ -4942,7 +4946,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .movie-card {
     position: relative; background: var(--surface); border: 1px solid var(--border);
     border-radius: 10px; overflow: hidden; cursor: pointer;
-    transition: transform 0.18s ease, border-color 0.18s;
+    contain: layout style;
+    transition: transform 0.16s ease, border-color 0.16s;
     display: flex; flex-direction: column;
 }
 .movie-card:hover { transform: translateY(-2px); border-color: var(--border-strong); }
@@ -4971,7 +4976,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     font-size: 0.82rem; font-weight: 600; line-height: 1.3; color: var(--text);
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-.movie-card-sub { font-size: 0.69rem; font-weight: 500; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.movie-card-sub { font-size: 0.69rem; font-weight: 500; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.movie-card-sub-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.card-dl-btn {
+    width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface-2); color: var(--text-muted); display: inline-flex;
+    align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.card-dl-btn:hover { color: #fff; border-color: var(--border-strong); background: var(--surface-hover); }
 
 /* ── Modals & Full-Page Views ────────────────────────────── */
 .modal-overlay {
@@ -5224,7 +5237,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 
 .mobile-dock {
     display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 65;
-    background: rgba(9, 9, 11, 0.96); backdrop-filter: blur(16px); border-top: 1px solid var(--border);
+    background: #09090b; border-top: 1px solid var(--border);
     padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
 }
 .mobile-dock-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; }
@@ -5235,7 +5248,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 }
 .dock-btn.active, .dock-btn:active { color: #fff; }
 
-.shelf-row { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: thin; }
+.shelf-row { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: thin; -webkit-overflow-scrolling: touch; }
 .shelf-card {
     flex: 0 0 140px; background: #080b12; border: 1px solid var(--border); border-radius: 12px;
     overflow: hidden; cursor: pointer; position: relative; transition: transform 0.16s, border-color 0.16s;
@@ -5251,7 +5264,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .shelf-del:hover { background: var(--netflix); color: #fff; }
 .fav-btn {
     position: absolute; bottom: 8px; right: 8px; z-index: 3; width: 32px; height: 32px; border-radius: 50%;
-    background: rgba(5,6,11,0.78); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.18);
+    background: rgba(9,9,11,0.86); border: 1px solid rgba(255,255,255,0.18);
     color: #cbd5e1; display: grid; place-items: center; cursor: pointer;
 }
 .fav-btn.faved { background: var(--netflix); border-color: #fb7185; color: #fff; }
@@ -5587,7 +5600,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
                         Watch Now
                     </button>
                     <button class="btn-nf-glass" id="btnHeroFav" onclick="toggleHeroFavorite()">+ My List</button>
-                    <button class="btn-nf-glass" onclick="focusLinkInput()">Paste Link</button>
+                    <button class="btn-nf-glass" id="btnHeroPasteLink" onclick="focusLinkInput()">Paste Link</button>
+                    <button class="btn-nf-glass" id="btnHeroDownload" onclick="downloadHeroCurrent()" style="display:none;">Download</button>
                 </div>
             </div>
 
@@ -6382,6 +6396,14 @@ html, body { max-width: 100%; overflow-x: hidden; }
                     </div>
                 </div>
             </section>
+            <section class="settings-card">
+                <div class="settings-card-title"><span>Custom Stream Link (Advanced)</span></div>
+                <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:10px;line-height:1.45;">
+                    Direct HubCloud, HDHub4u ya .m3u8 URL seedha player mein chalane ke liye yahan paste karein.
+                </div>
+                <input type="text" id="toolsCustomUrlInput" class="select-control" placeholder="Paste HubCloud, HDHub4u, or .m3u8 link..." style="width:100%;margin-bottom:10px;">
+                <button type="button" class="vlc-banner" style="min-height:44px;font-size:0.9rem;justify-content:center;" onclick="playToolsCustomLink()">Play Custom Stream</button>
+            </section>
         </div>
     </div>
 </div>
@@ -7086,12 +7108,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 <div class="shelf-info">${esc(cleanHeroTitle(item.title))}</div>
             `;
             card.onclick = () => {
-                if (item.permalink) { loadMovieDetails(item); }
-                else if (item.url) {
-                    currentMovieMeta = item;
-                    document.getElementById('urlInput').value = item.url;
-                    resolveLink();
-                }
+                openTitleNetflixStyle(item);
             };
             shelf.appendChild(card);
         });
@@ -7150,10 +7167,12 @@ html, body { max-width: 100%; overflow-x: hidden; }
         }
         if (isAndroidApp()) {
             dismissIntro();
-            ['btnInstallApp', 'btnNavRemote', 'btnNavQr', 'phoneQrCard', 'movieQrCard', 'btnWatchOnline', 'btnInlineWeb', 'pcSetupToolsCard'].forEach(id => {
+            ['linkSection', 'btnHeroPasteLink', 'btnInstallApp', 'btnNavRemote', 'btnNavQr', 'phoneQrCard', 'movieQrCard', 'btnWatchOnline', 'btnInlineWeb', 'pcSetupToolsCard'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.style.display = 'none';
             });
+            const heroDlBtn = document.getElementById('btnHeroDownload');
+            if (heroDlBtn) heroDlBtn.style.display = 'inline-flex';
             const chipTxt = document.getElementById('deviceModeText');
             if (chipTxt) chipTxt.textContent = 'Android Cinema';
             const mainTxt = document.getElementById('btnMainVlcText');
@@ -7309,7 +7328,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
     function prevHero() { goHero(heroIdx - 1); }
     function playHeroCurrent() {
         const m = heroItems[heroIdx];
-        if (m) loadMovieDetails(m);
+        if (m) openTitleNetflixStyle(m);
     }
     function toggleHeroFavorite() {
         const m = heroItems[heroIdx];
@@ -7360,12 +7379,17 @@ html, body { max-width: 100%; overflow-x: hidden; }
             </div>
             <div class="movie-card-info">
                 <div class="movie-card-title">${esc(titleTxt)}</div>
-                <div class="movie-card-sub">${esc(rawBadges || 'HDHub4u')}${rBadge}</div>
+                <div class="movie-card-sub-row">
+                    <div class="movie-card-sub">${esc(rawBadges || 'HDHub4u')}${rBadge}</div>
+                    <button type="button" class="card-dl-btn" aria-label="Download offline" title="Offline Download">${_SH_ICONS.download}</button>
+                </div>
             </div>
         `;
         card.querySelector('.fav-btn').onclick = (e) => toggleFavorite(m, e);
-        card.onclick = () => loadMovieDetails(m);
-        card.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); loadMovieDetails(m); } };
+        const dlBtn = card.querySelector('.card-dl-btn');
+        if (dlBtn) dlBtn.onclick = (e) => quickOpenMovieDownload(m, e);
+        card.onclick = () => openTitleNetflixStyle(m);
+        card.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTitleNetflixStyle(m); } };
         return card;
     }
 
@@ -7734,7 +7758,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                     `;
                     row.onclick = () => {
                         hideSuggestBoxes();
-                        loadMovieDetails(m);
+                        openTitleNetflixStyle(m);
                     };
                     box.appendChild(row);
                 });
@@ -7913,15 +7937,157 @@ html, body { max-width: 100%; overflow-x: hidden; }
         });
     }
 
+    function _isLikelySeriesItem(m) {
+        if (!m) return false;
+        if (m.is_series) return true;
+        const t = String(m.title || '');
+        const tag = String(m.card_tag || '');
+        return /\b(?:season\s*\d+|s\d{1,2}\s*[-–]?\s*e?\d{0,2}|all\s*episodes|complete\s*series|web\s*series)\b/i.test(t) || /series/i.test(tag);
+    }
+
+    function launchAndroidDirectStream(cfg) {
+        if (!isAndroidApp()) return false;
+        const profLang = (userSettingsState.profile && userSettingsState.profile.preferred_language) || 'Auto';
+        const defQual = (userSettingsState.download_prefs && userSettingsState.download_prefs.default_quality) || '720p';
+        const payload = Object.assign({
+            is_pending: true,
+            target: '',
+            server_origin: window.location.origin,
+            preferred_language: profLang,
+            preferred_quality: defQual,
+            audio_track: 1,
+            sub_track: 'auto',
+            start_time: 0
+        }, cfg || {});
+        window.StreamHubAndroid.playMedia(JSON.stringify(payload));
+        return true;
+    }
+
+    function openTitleNetflixStyle(movie) {
+        if (!movie) return;
+        if (!movie.permalink && movie.url) {
+            if (isAndroidApp()) {
+                saveToHistory(movie);
+                launchAndroidDirectStream({
+                    hdhub_link: movie.url,
+                    title: cleanHeroTitle(movie.title || 'StreamHub Cinema'),
+                    media_key: movie.url
+                });
+                return;
+            }
+            currentMovieMeta = movie;
+            document.getElementById('urlInput').value = movie.url;
+            resolveLink();
+            return;
+        }
+        if (isAndroidApp() && !_isLikelySeriesItem(movie)) {
+            currentMovieMeta = movie;
+            saveToHistory(movie);
+            markWatched(movie.permalink);
+            const prevProg = getProgressForItem(movie);
+            const startSec = (prevProg && prevProg.position_sec >= 10 && prevProg.pct < 95) ? Math.floor(prevProg.position_sec) : 0;
+            launchAndroidDirectStream({
+                movie_permalink: movie.permalink,
+                title: cleanHeroTitle(movie.title || 'StreamHub Cinema'),
+                media_key: movie.permalink,
+                start_time: startSec
+            });
+            return;
+        }
+        loadMovieDetails(movie);
+    }
+
+    async function quickOpenMovieDownload(movie, ev) {
+        if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+        if (!movie || !movie.permalink) {
+            showToast('Download link available nahi hai', 'err');
+            return;
+        }
+        showToast('Loading download qualities...');
+        try {
+            const resp = await fetch('/api/movie?url=' + encodeURIComponent(movie.permalink));
+            const details = await resp.json();
+            if (details && details.is_series) {
+                loadMovieDetails(movie);
+                return;
+            }
+            const opts = (details && details.qualities ? details.qualities : []).map(q => ({
+                label: q.title,
+                hdhub_link: q.link,
+                size_label: _inferQualityTag(q.title).size,
+                quality_label: _inferQualityTag(q.title).res
+            }));
+            if (!opts.length) {
+                showToast((details && details.error) || 'Koi downloadable link nahi mila', 'err');
+                return;
+            }
+            openDownloadPicker({
+                title: movie.title || details.title || 'Movie',
+                poster: movie.thumbnail || (details.meta && details.meta.poster) || '',
+                media_key: movie.permalink || movie.title,
+                options: opts
+            });
+        } catch (e) {
+            showToast('Download options load nahi hue: ' + e.message, 'err');
+        }
+    }
+
+    function downloadHeroCurrent() {
+        const m = heroItems[heroIdx];
+        if (m) quickOpenMovieDownload(m);
+    }
+
+    function playToolsCustomLink() {
+        const inp = document.getElementById('toolsCustomUrlInput');
+        const url = (inp && inp.value || '').trim();
+        if (!url) { showToast('Pehle HubCloud, HDHub4u ya .m3u8 link paste karein', 'err'); return; }
+        closeAllSettingsPages();
+        if (isAndroidApp()) {
+            launchAndroidDirectStream({
+                hdhub_link: url,
+                title: 'Custom Stream',
+                media_key: url
+            });
+            return;
+        }
+        const mainInp = document.getElementById('urlInput');
+        if (mainInp) mainInp.value = url;
+        resolveLink();
+    }
+
     function pickSeriesLink(encodedLink, sIdx, epIdx) {
         const link = decodeURIComponent(encodedLink);
+        const pKey = (currentMovieMeta && currentMovieMeta.permalink) || '';
+        const sTitle = cleanDisplayTitle((activeSeriesData && activeSeriesData.title) || (currentMovieMeta && currentMovieMeta.title) || 'Web Series');
+        let epLbl = '';
+        let nxtPayload = null;
         if (sIdx >= 0 && epIdx >= 0) {
             activeSeriesSeasonIdx = sIdx;
             activeSeriesEpIdx = epIdx;
             markWatched(link);
             renderSeriesEpisodes();
+            const sea = (activeSeriesData && activeSeriesData.seasons || [])[sIdx];
+            const epObj = sea && sea.episodes ? sea.episodes[epIdx] : null;
+            epLbl = (epObj && epObj.ep_label) || `Ep ${epIdx + 1}`;
+            nxtPayload = buildNextSeriesPayload(sIdx, epIdx + 1, 0);
         } else {
             markWatched(link);
+        }
+        if (isAndroidApp() && sIdx >= 0 && epIdx >= 0) {
+            const epKey = pKey ? `${pKey}::ep::${epLbl}` : link;
+            const prevProg = getProgressByKey(epKey, link);
+            const startSec = (prevProg && prevProg.position_sec >= 10 && prevProg.pct < 95) ? Math.floor(prevProg.position_sec) : 0;
+            launchAndroidDirectStream({
+                hdhub_link: link,
+                movie_permalink: pKey,
+                title: sTitle,
+                ep_label: epLbl,
+                media_key: epKey,
+                parent_key: pKey,
+                start_time: startSec,
+                next_episode: nxtPayload
+            });
+            return;
         }
         document.getElementById('urlInput').value = link;
         resolveLink();
@@ -7969,6 +8135,18 @@ html, body { max-width: 100%; overflow-x: hidden; }
             const details = await resp.json();
             if (details.is_series) {
                 renderSeriesPanel(details, movie.thumbnail);
+                return;
+            }
+            if (isAndroidApp() && details.qualities && details.qualities.length) {
+                panel.style.display = 'none';
+                const prevP = getProgressForItem(movie);
+                const startSec = (prevP && prevP.position_sec >= 10 && prevP.pct < 95) ? Math.floor(prevP.position_sec) : 0;
+                launchAndroidDirectStream({
+                    movie_permalink: movie.permalink,
+                    title: cleanHeroTitle(details.title || movie.title || 'StreamHub Cinema'),
+                    media_key: movie.permalink,
+                    start_time: startSec
+                });
                 return;
             }
             renderDetailMeta(details.meta);
@@ -9152,7 +9330,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
     function openHub4kMovie(movie) {
         _savedMainScrollY = 0;
         closeHub4kModal();
-        loadMovieDetails(movie);
+        openTitleNetflixStyle(movie);
     }
 
     function renderHub4kGrid() {
@@ -10631,10 +10809,18 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
         if spath == '/api/stream':
             raw_target  = qp.get('url', [''])[0]
             seek_target = qp.get('seek_url', [''])[0]
+            sid_hint    = qp.get('sid', [''])[0].strip()
             base_off, sub_sz, cm = self._parse_zip_qp(qp)
             if not raw_target:
                 return ('missing_url', None)
-            return ('ok', (raw_target, seek_target, base_off, sub_sz, cm, []))
+            backups = []
+            if sid_hint:
+                sinfo = get_short_stream(sid_hint)
+                if sinfo:
+                    backups = sinfo.get('backup_urls') or []
+                    if not seek_target:
+                        seek_target = sinfo.get('seek_url', '') or ''
+            return ('ok', (raw_target, seek_target, base_off, sub_sz, cm, backups))
         return ('other', None)
 
     def do_HEAD(self):
@@ -11894,6 +12080,175 @@ def _ensure_embedded_vlc_extracted(show_splash=True):
 _EPISODE_CACHE_LOCK = threading.Lock()
 _EPISODE_RESOLVE_CACHE = OrderedDict()  # {link: (ts, resolved_dict)}
 _EPISODE_PREWARM_EVENTS = {}            # {link: threading.Event}
+_MOVIE_DETAILS_CACHE_LOCK = threading.Lock()
+_MOVIE_DETAILS_CACHE = OrderedDict()    # {permalink: (ts, details_dict)}
+
+def _get_movie_details_cached(post_url):
+    url = str(post_url or '').strip()
+    if not url:
+        return None
+    with _MOVIE_DETAILS_CACHE_LOCK:
+        hit = _MOVIE_DETAILS_CACHE.get(url)
+        if hit and (time.time() - hit[0]) < 1200:
+            _MOVIE_DETAILS_CACHE.move_to_end(url)
+            return hit[1]
+    details = parse_movie_details(url)
+    if details and (details.get('qualities') or details.get('seasons') or details.get('packs')):
+        with _MOVIE_DETAILS_CACHE_LOCK:
+            _MOVIE_DETAILS_CACHE[url] = (time.time(), details)
+            while len(_MOVIE_DETAILS_CACHE) > 60:
+                _MOVIE_DETAILS_CACHE.popitem(last=False)
+    return details
+
+def _parse_quality_option_meta(title_str):
+    t = str(title_str or '').strip()
+    tl = t.lower()
+    if re.search(r'\b(2160p|4k|uhd|ds4k)\b', tl):
+        short_lbl = '4K UHD'
+    elif '1080p' in tl:
+        short_lbl = '1080p'
+    elif '720p' in tl:
+        short_lbl = '720p'
+    elif '480p' in tl:
+        short_lbl = '480p'
+    elif '360p' in tl:
+        short_lbl = '360p'
+    else:
+        short_lbl = 'HD'
+
+    langs = []
+    if re.search(r'dual[\s\-]*audio|hindi\s*\+\s*eng|hindi\s*\+\s*english', tl):
+        langs.append('Dual Audio')
+    else:
+        for nm, pat in (
+            ('Hindi', r'\b(hindi|hin)\b'),
+            ('English', r'\b(english|eng)\b'),
+            ('Tamil', r'\b(tamil|tam)\b'),
+            ('Telugu', r'\b(telugu|tel)\b'),
+            ('Malayalam', r'\b(malayalam|mal)\b'),
+            ('Kannada', r'\b(kannada|kan)\b'),
+            ('Punjabi', r'\b(punjabi)\b'),
+            ('Korean', r'\b(korean|kor)\b'),
+        ):
+            if re.search(pat, tl):
+                langs.append(nm)
+    if 'multi' in tl and 'Dual Audio' not in langs:
+        langs.append('Multi Audio')
+    lang_hint = ' + '.join(langs[:2]) if langs else ''
+
+    m_sz = re.search(r'(\d+(?:\.\d+)?\s*(?:GB|MB))', t, re.I)
+    size_hint = m_sz.group(1).upper().replace('  ', ' ') if m_sz else ''
+
+    parts = [short_lbl]
+    if lang_hint:
+        parts.append(lang_hint)
+    if size_hint:
+        parts.append(size_hint)
+    if len(parts) == 1 and t:
+        clean_t = re.sub(r'\s+', ' ', t).strip()
+        label = f"{short_lbl} • {clean_t[:42]}"
+    else:
+        label = ' • '.join(parts)
+    return {
+        'label': label,
+        'short_label': short_lbl,
+        'language_hint': lang_hint,
+        'size_hint': size_hint,
+    }
+
+def _score_quality_candidate(title_str, pref_quality='720p', pref_lang='Auto'):
+    tl = str(title_str or '').lower()
+    pq = str(pref_quality or '720p').lower()
+    pl = str(pref_lang or 'Auto').lower().strip()
+    score = 0
+
+    tier_map = [
+        ('480p', r'480p'),
+        ('720p', r'720p'),
+        ('1080p', r'1080p'),
+        ('4k', r'2160p|4k|uhd|ds4k'),
+    ]
+    matched_tier = '720p'
+    for tk, pat in tier_map:
+        if re.search(pat, tl):
+            matched_tier = tk
+            break
+
+    norm_pq = '4k' if any(x in pq for x in ('4k', '2160', 'uhd')) else ('1080p' if '1080' in pq else ('480p' if '480' in pq else '720p'))
+    if matched_tier == norm_pq:
+        score += 120
+    elif (norm_pq == '720p' and matched_tier == '1080p') or (norm_pq == '1080p' and matched_tier == '720p'):
+        score += 55
+    elif matched_tier in ('720p', '1080p'):
+        score += 35
+    elif matched_tier == '480p':
+        score += 20
+
+    if pl and pl != 'auto':
+        if pl in tl:
+            score += 95
+        elif pl in ('hindi', 'dual audio') and ('dual' in tl or 'hindi' in tl or 'multi' in tl):
+            score += 75
+        elif pl == 'english' and ('dual' in tl or 'english' in tl or 'eng' in tl):
+            score += 65
+
+    if re.search(r'\b(hdts|cam|camrip|predvd|telesync)\b', tl):
+        score -= 100
+    if 'zip' in tl or 'pack' in tl:
+        score -= 15
+    return score
+
+def _build_quality_options_from_list(qualities_raw, active_idx=-1, active_link=''):
+    out = []
+    seen = set()
+    act_l = str(active_link or '').strip()
+    for q in (qualities_raw or []):
+        if isinstance(q, dict):
+            lnk = str(q.get('hdhub_link') or q.get('link') or q.get('stream_url') or '').strip()
+            raw_t = str(q.get('raw_title') or q.get('title') or q.get('label') or '').strip()
+        else:
+            lnk = ''
+            raw_t = ''
+        if not lnk or lnk in seen:
+            continue
+        seen.add(lnk)
+        meta = _parse_quality_option_meta(raw_t)
+        idx = len(out)
+        is_act = (idx == active_idx) or (bool(act_l) and lnk == act_l)
+        out.append({
+            'id': idx,
+            'label': meta['label'],
+            'short_label': meta['short_label'],
+            'language_hint': meta['language_hint'],
+            'size_hint': meta['size_hint'],
+            'raw_title': raw_t,
+            'hdhub_link': lnk,
+            'stream_url': str((q or {}).get('stream_url', '') or ''),
+            'sid': str((q or {}).get('sid', '') or ''),
+            'compress_method': int((q or {}).get('compress_method', 0) or 0) if isinstance(q, dict) else 0,
+            'is_active': is_act,
+        })
+    if out and not any(o['is_active'] for o in out):
+        out[0]['is_active'] = True
+    return out
+
+def _find_completed_offline_match(keys):
+    key_set = {str(k or '').strip() for k in (keys or []) if str(k or '').strip()}
+    if not key_set:
+        return None
+    with _OFFLINE_LOCK:
+        items = list(_load_offline_db_unlocked())
+    for item in items:
+        if item.get('status') != 'completed':
+            continue
+        mk = str(item.get('media_key', '') or '').strip()
+        hl = str(item.get('hdhub_link', '') or '').strip()
+        pk = str(item.get('parent_key', '') or '').strip()
+        if (mk and mk in key_set) or (hl and hl in key_set) or (pk and pk in key_set):
+            fpath = _offline_item_path(item)
+            if fpath and os.path.isfile(fpath):
+                return item
+    return None
 
 def _resolve_episode_cached(hdhub_link):
     lnk = str(hdhub_link or '').strip()
@@ -11961,14 +12316,33 @@ def _prepare_play_target(body, srv_port=None):
     offline_id = str(body.get('offline_id', '') or '').strip()
     is_offline_local = False
     offline_entry = None
-    stream_url = body.get('stream_url', '')
-    seek_url = body.get('seek_url', '')
+    stream_url = str(body.get('stream_url', '') or '').strip()
+    seek_url = str(body.get('seek_url', '') or '').strip()
     base_off = int(body.get('base_offset', 0) or 0)
     sub_raw = body.get('sub_size', None)
     sub_sz = int(sub_raw) if sub_raw is not None else None
     cm = int(body.get('compress_method', 0) or 0)
-    sid_val = str(body.get('sid', '') or '')
+    sid_val = str(body.get('sid', '') or '').strip()
     backups = body.get('backup_urls') or []
+
+    user_cfg = get_user_settings()
+    pref_quality = str(body.get('preferred_quality') or (user_cfg.get('download_prefs') or {}).get('default_quality') or '720p').strip()
+    pref_lang = str(body.get('preferred_language') or (user_cfg.get('profile') or {}).get('preferred_language') or 'Auto').strip()
+    movie_permalink = str(body.get('movie_permalink', '') or '').strip()
+    hdhub_link = str(body.get('hdhub_link', '') or '').strip()
+    force_online = bool(body.get('force_online', False))
+    sel_q_raw = body.get('selected_quality_id', None)
+    selected_q_id = int(sel_q_raw) if sel_q_raw is not None and str(sel_q_raw).strip() != '' else None
+    incoming_q_opts = body.get('quality_options') if isinstance(body.get('quality_options'), list) else []
+
+    title_val = str(body.get('title', 'StreamHub Cinema') or 'StreamHub Cinema')
+    ep_label_val = str(body.get('ep_label', '') or '')
+    media_key_in = str(body.get('media_key', '') or '').strip()
+    parent_key_in = str(body.get('parent_key', '') or '').strip()
+    next_ep_obj = body.get('next_episode') if isinstance(body.get('next_episode'), dict) else None
+    start_sec = max(0, int(body.get('start_time', 0) or 0))
+    quality_options = []
+    active_quality_label = ''
 
     if offline_id:
         offline_entry = _get_offline_entry(offline_id)
@@ -11978,6 +12352,14 @@ def _prepare_play_target(body, srv_port=None):
         if not fpath or not os.path.isfile(fpath):
             return None, {"success": False, "message": "Offline video file device storage me nahi mili"}
         is_offline_local = True
+
+    # Instant offline check when opening movie directly without forcing online quality switch
+    if not is_offline_local and not stream_url and not force_online and selected_q_id is None:
+        matched_off = _find_completed_offline_match([media_key_in, movie_permalink, hdhub_link])
+        if matched_off:
+            offline_id = matched_off.get('id', '')
+            offline_entry = matched_off
+            is_offline_local = True
 
     if not is_offline_local and (not stream_url or not backups) and sid_val:
         sinfo = get_short_stream(sid_val)
@@ -11991,39 +12373,129 @@ def _prepare_play_target(body, srv_port=None):
             if not backups:
                 backups = sinfo.get('backup_urls') or []
 
-    if not is_offline_local and not stream_url and body.get('hdhub_link'):
-        resolved = _resolve_episode_cached(body.get('hdhub_link'))
-        if not resolved or not resolved.get('success') or not resolved.get('stream_url'):
-            err_msg = (resolved or {}).get('error') or 'Next episode ka stream link resolve nahi hua'
-            return None, {"success": False, "message": err_msg}
+    # Direct Netflix-style movie_permalink background resolution & best-quality selection
+    details_obj = None
+    raw_q_source = list(incoming_q_opts)
+    if not is_offline_local and not stream_url and movie_permalink and (not raw_q_source or not hdhub_link):
+        details_obj = _get_movie_details_cached(movie_permalink)
+        if details_obj:
+            if details_obj.get('title') and (not title_val or title_val == 'StreamHub Cinema'):
+                title_val = details_obj['title']
+            if details_obj.get('qualities') and not raw_q_source:
+                raw_q_source = list(details_obj['qualities'])
+            elif details_obj.get('is_series') and not hdhub_link:
+                seasons = details_obj.get('seasons') or []
+                if seasons:
+                    chosen_s_idx, chosen_e_idx = 0, 0
+                    prog_map = _read_progress_disk()
+                    best_ts = -1
+                    for si, sea in enumerate(seasons):
+                        for ei, ep_item in enumerate(sea.get('episodes') or []):
+                            pk = f"{movie_permalink}::ep::{ep_item.get('ep_label', '')}"
+                            pr = prog_map.get(pk) or prog_map.get(ep_item.get('link', ''))
+                            if pr and float(pr.get('updated_at', 0) or 0) > best_ts:
+                                best_ts = float(pr.get('updated_at', 0) or 0)
+                                chosen_s_idx, chosen_e_idx = si, ei
+                    ep_list = seasons[chosen_s_idx].get('episodes') or []
+                    if ep_list:
+                        ep_cur = ep_list[chosen_e_idx]
+                        hdhub_link = str(ep_cur.get('link', '') or '').strip()
+                        ep_label_val = str(ep_cur.get('ep_label', '') or f"Ep {chosen_e_idx + 1}")
+                        parent_key_in = parent_key_in or movie_permalink
+                        media_key_in = f"{movie_permalink}::ep::{ep_label_val}"
+                        if chosen_e_idx + 1 < len(ep_list) and not next_ep_obj:
+                            ep_nxt = ep_list[chosen_e_idx + 1]
+                            nx_lbl = str(ep_nxt.get('ep_label', '') or f"Ep {chosen_e_idx + 2}")
+                            next_ep_obj = {
+                                'title': title_val,
+                                'hdhub_link': ep_nxt.get('link', ''),
+                                'ep_label': nx_lbl,
+                                'media_key': f"{movie_permalink}::ep::{nx_lbl}",
+                                'parent_key': movie_permalink,
+                                'movie_permalink': movie_permalink,
+                            }
+
+    if raw_q_source:
+        quality_options = _build_quality_options_from_list(raw_q_source, active_link=hdhub_link)
+
+    # Resolve best candidate if no direct stream_url yet
+    if not is_offline_local and not stream_url:
+        if hdhub_link and (not quality_options or selected_q_id is not None or not movie_permalink):
+            cand_indices = []
+            if quality_options:
+                if selected_q_id is not None and 0 <= selected_q_id < len(quality_options):
+                    cand_indices.append(selected_q_id)
+                for idx_q, q_opt in enumerate(quality_options):
+                    if q_opt.get('hdhub_link') == hdhub_link and idx_q not in cand_indices:
+                        cand_indices.insert(0, idx_q)
+            if not cand_indices:
+                cand_links = [(0, hdhub_link, '')]
+            else:
+                cand_links = [(idx_q, quality_options[idx_q]['hdhub_link'], quality_options[idx_q]['short_label']) for idx_q in cand_indices]
+        elif quality_options:
+            ranked = sorted(
+                range(len(quality_options)),
+                key=lambda i: _score_quality_candidate(quality_options[i].get('raw_title') or quality_options[i].get('label'), pref_quality, pref_lang),
+                reverse=True
+            )
+            if selected_q_id is not None and 0 <= selected_q_id < len(quality_options):
+                ranked = [selected_q_id] + [i for i in ranked if i != selected_q_id]
+            cand_links = [(i, quality_options[i]['hdhub_link'], quality_options[i]['short_label']) for i in ranked[:4]]
+        elif hdhub_link:
+            cand_links = [(0, hdhub_link, '')]
+        else:
+            err_detail = (details_obj or {}).get('error') or 'Is movie ka koi active stream link nahi mila'
+            return None, {"success": False, "message": err_detail}
+
+        resolved = None
+        last_err = ''
+        winning_idx = -1
+        for idx_q, c_link, _ in cand_links:
+            r_try = _resolve_episode_cached(c_link)
+            if r_try and r_try.get('success') and r_try.get('stream_url'):
+                resolved = r_try
+                winning_idx = idx_q
+                hdhub_link = c_link
+                break
+            if r_try and r_try.get('error'):
+                last_err = str(r_try.get('error'))
+        if not resolved:
+            return None, {"success": False, "message": last_err or 'Stream link resolve nahi hua — doosra title try karein'}
+
         stream_url = resolved.get('stream_url', '')
         seek_url = resolved.get('seek_url', '') or ''
         base_off = int(resolved.get('base_offset', 0) or 0)
         sub_sz = resolved.get('sub_size', None)
         cm = int(resolved.get('compress_method', 0) or 0)
         sid_val = str(resolved.get('sid', '') or '')
+        if not title_val or title_val == 'StreamHub Cinema':
+            title_val = str(resolved.get('title') or 'StreamHub Cinema')
         if sid_val and not backups:
             sinfo2 = get_short_stream(sid_val)
             if sinfo2:
                 backups = sinfo2.get('backup_urls') or []
+        if quality_options and 0 <= winning_idx < len(quality_options):
+            for qi, qo in enumerate(quality_options):
+                qo['is_active'] = (qi == winning_idx)
+            selected_q_id = winning_idx
+            active_quality_label = quality_options[winning_idx].get('short_label', '')
 
     if not is_offline_local and not stream_url:
         return None, {"success": False, "message": "Stream URL missing"}
 
     use_port = int(srv_port or PORT)
+    duration_ms_hint = 0
     if is_offline_local:
         is_hls = False
         final_target = f"http://127.0.0.1:{use_port}/api/offline_stream?id={urllib.parse.quote(offline_id, safe='')}"
         title_val = str(body.get('title') or (offline_entry or {}).get('title') or 'Offline Movie')
-        start_sec = max(0, int(body.get('start_time', 0) or 0))
         hls_base_ms = 0
         hls_intra_sec = 0.0
         hls_total_ms = 0
         hls_sid = ""
+        active_quality_label = str((offline_entry or {}).get('quality_label') or 'Offline HD')
     else:
         is_hls = (cm == -1 or '.m3u8' in stream_url or 'hdstream4u' in stream_url)
-        title_val = str(body.get('title', 'StreamHub Cinema') or 'StreamHub Cinema')
-        start_sec = max(0, int(body.get('start_time', 0) or 0))
         hls_base_ms = 0
         hls_intra_sec = 0.0
         hls_total_ms = 0
@@ -12045,13 +12517,58 @@ def _prepare_play_target(body, srv_port=None):
                 final_target = stream_url
         else:
             if cm == 0:
-                get_stream_session(stream_url, seek_url, base_off, sub_sz, cm, backup_urls=backups).warm_async()
+                sess_obj = get_stream_session(stream_url, seek_url, base_off, sub_sz, cm, backup_urls=backups)
+                sess_obj.warm_async()
+                if getattr(sess_obj, 'media_info', None) and sess_obj.media_info.get('duration_sec'):
+                    duration_ms_hint = int(float(sess_obj.media_info['duration_sec']) * 1000)
             proxy_url = f"http://127.0.0.1:{use_port}/api/stream?url={urllib.parse.quote(stream_url, safe='')}"
             if seek_url:
                 proxy_url += f"&seek_url={urllib.parse.quote(seek_url, safe='')}"
+            if sid_val:
+                proxy_url += f"&sid={urllib.parse.quote(sid_val, safe='')}"
             if base_off or sub_sz is not None or cm:
                 proxy_url += f"&off={base_off}&sz={sub_sz or 0}&cm={cm}"
             final_target = proxy_url
+
+    if not active_quality_label:
+        active_quality_label = 'Auto HLS' if is_hls else _parse_quality_option_meta(title_val).get('short_label', 'HD')
+    if not quality_options:
+        # Expose mirror fallback options if multiple direct CDNs exist (e.g. for series episodes)
+        alt_opts = [{
+            'id': 0,
+            'label': f"{active_quality_label} • Primary CDN",
+            'short_label': active_quality_label,
+            'language_hint': '',
+            'size_hint': '',
+            'raw_title': title_val,
+            'hdhub_link': hdhub_link,
+            'stream_url': stream_url if not is_offline_local else '',
+            'sid': sid_val,
+            'compress_method': cm,
+            'is_active': True,
+        }]
+        for bi, b_url in enumerate(backups or []):
+            bu = str(b_url or '').strip()
+            if not bu or bu == stream_url or len(alt_opts) >= 4:
+                continue
+            b_cm = -1 if '.m3u8' in bu else cm
+            b_lbl = 'HLS Adaptive' if b_cm == -1 else f"Backup Server {len(alt_opts)}"
+            alt_opts.append({
+                'id': len(alt_opts),
+                'label': f"{active_quality_label} • {b_lbl}",
+                'short_label': active_quality_label,
+                'language_hint': '',
+                'size_hint': '',
+                'raw_title': title_val,
+                'hdhub_link': '',
+                'stream_url': bu,
+                'sid': '',
+                'compress_method': b_cm,
+                'is_active': False,
+            })
+        quality_options = alt_opts
+        if selected_q_id is None:
+            selected_q_id = 0
 
     sub_file = str(body.get('subtitle_file', '') or '')
     sub_key = str(body.get('subtitle_key', '') or '')
@@ -12063,7 +12580,6 @@ def _prepare_play_target(body, srv_port=None):
 
     can_seek = True if (is_hls or is_offline_local) else (cm != 8 and bool(seek_url or is_range_capable(stream_url) or any(is_range_capable(u) for u in (backups or []))))
 
-    next_ep_obj = body.get('next_episode') if isinstance(body.get('next_episode'), dict) else None
     if next_ep_obj and not is_offline_local:
         if next_ep_obj.get('hdhub_link'):
             _prewarm_episode_async(next_ep_obj['hdhub_link'])
@@ -12077,7 +12593,7 @@ def _prepare_play_target(body, srv_port=None):
             ).warm_async()
 
     pref_track = int(body.get('audio_track') or (offline_entry or {}).get('preferred_audio_track') or 1)
-    media_key_val = str(body.get('media_key', '') or (offline_entry or {}).get('media_key') or offline_id or sid_val or title_val or '')
+    media_key_val = str(media_key_in or (offline_entry or {}).get('media_key') or offline_id or movie_permalink or sid_val or title_val or '')
 
     return {
         "target": final_target,
@@ -12088,17 +12604,25 @@ def _prepare_play_target(body, srv_port=None):
         "hls_base_ms": hls_base_ms,
         "hls_intra_sec": hls_intra_sec,
         "hls_total_ms": hls_total_ms,
+        "duration_ms": duration_ms_hint,
         "audio_track": pref_track,
         "sub_track": str(body.get('sub_track', 'auto') or 'auto'),
+        "preferred_language": pref_lang,
+        "preferred_quality": pref_quality,
         "title": title_val,
         "start_time": start_sec,
         "server_origin": f"http://127.0.0.1:{use_port}",
         "media_key": media_key_val,
-        "parent_key": str(body.get('parent_key', '') or (offline_entry or {}).get('parent_key') or ''),
-        "ep_label": str(body.get('ep_label', '') or (offline_entry or {}).get('ep_label') or ''),
+        "parent_key": str(parent_key_in or (offline_entry or {}).get('parent_key') or ''),
+        "ep_label": str(ep_label_val or (offline_entry or {}).get('ep_label') or ''),
+        "movie_permalink": movie_permalink,
+        "hdhub_link": hdhub_link,
         "offline_id": offline_id,
         "subtitle_file": sub_file,
         "next_episode": next_ep_obj,
+        "active_quality_label": active_quality_label,
+        "selected_quality_id": int(selected_q_id or 0),
+        "quality_options": quality_options,
     }, None
 
 # ── User Settings (Profile, Theme, Download Prefs) & Private Offline Downloads ──

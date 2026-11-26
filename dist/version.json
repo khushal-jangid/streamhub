@@ -1,13 +1,13 @@
 {
-    "version":  "2.5.6",
+    "version":  "2.5.7",
     "download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.0/StreamHub.exe",
     "sha256":  "7723fd9cd24e81c3efbf87c8184fecdbb37191504e6e82c85a7adcd7a5a2250c",
     "size_bytes":  87698023,
-    "apk_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.6/StreamHub.apk",
-    "apk_sha256":  "238688b11c4ec0e302d18d915512af34fd0306a5e4b47ba907425f5bc1e17614",
-    "apk_size_bytes":  78042768,
-    "py_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.6/streamhub_app.py",
-    "py_sha256":  "d5253ff449e7fcfa17a8c63cf2ea653461968fcd1d1e6073a3880a29da73b17b",
-    "min_apk_version_code":  9,
-    "notes":  "v2.5.6 (Android APK): Fixed startup auto-update popup on app open (opaque .sh-full-page rendering on Android WebView) + rate-limit-free release manifest feed fallback \u0026 cold-start auto-retry."
+    "apk_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.7/StreamHub.apk",
+    "apk_sha256":  "7525ba1e9c538a069c3e3704b17282f8ebeb13f21b071ae30efb5a152aeee4c5",
+    "apk_size_bytes":  78065420,
+    "py_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.7/streamhub_app.py",
+    "py_sha256":  "9081d312c47c4ec02b0dc02074116a37e9cc3c5c07aa43732d403f00dfe8fdc8",
+    "min_apk_version_code":  11,
+    "notes":  "v2.5.7 (Android APK): Netflix-style 1-tap direct player open (background link resolution), in-player Quality \u0026 Audio/Language switcher, stall buffering spinner fix, background resume black-screen fix, broader seeking support, and 60fps UI scroll optimization."
 }
