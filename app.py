@@ -52,7 +52,7 @@ if sys.platform == 'win32':
     except Exception:
         pass
 
-APP_VERSION = "2.3.0"
+APP_VERSION = "2.4.0"
 DEFAULT_UPDATE_URL = "khushal-jangid/streamhub"
 STREAMHUB_UPDATE_URL = os.environ.get("STREAMHUB_UPDATE_URL", "").strip()
 _ENV_DATA_DIR = os.environ.get("STREAMHUB_DATA_DIR", "").strip()
@@ -77,7 +77,7 @@ _WINDOW_HWND = 0
 _APP_QUITTING = False
 _DESKTOP_MODE = False
 USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-HDHUB4U_BASE_URL = "https://new16.hdhub4u.cl"
+HDHUB4U_BASE_URL = "https://new17.hdhub4u.cl"
 HDHUB4U_SEARCH_API = "https://search.pingora.fyi/collections/post/documents/search"
 
 def _find(name, *fallbacks):
@@ -1606,23 +1606,42 @@ def _pingora_query(query, page=1, limit=24):
 
 _LIVE_MIRROR_LOCK = threading.Lock()
 _LIVE_MIRROR_CHECKED_TS = 0.0
+_DETAILS_CACHE_LOCK = threading.Lock()
+_DETAILS_CACHE = OrderedDict()  # {slug_key: (ts, dict)}
+_POST_VALID_CACHE = {}          # {slug_key: (ts, bool)}
 
-def _discover_live_hdhub4u_base():
+def _hdhub_slug_key(url):
+    try:
+        pu = urllib.parse.urlparse(str(url or '').strip())
+        path = pu.path.strip('/').lower()
+        return path or str(url or '').strip().lower()
+    except Exception:
+        return str(url or '').strip().lower()
+
+def _discover_live_hdhub4u_base(force=False):
     """Finds the active HDHub4u domain if the current one ever rotates (rate-limited)."""
     global HDHUB4U_BASE_URL, _LIVE_MIRROR_CHECKED_TS
     with _LIVE_MIRROR_LOCK:
         now = time.time()
-        if now - _LIVE_MIRROR_CHECKED_TS < 120:
+        if not force and (now - _LIVE_MIRROR_CHECKED_TS) < 120:
             return HDHUB4U_BASE_URL
         _LIVE_MIRROR_CHECKED_TS = now
         cur_m = re.search(r'new(\d+)\.hdhub4u', HDHUB4U_BASE_URL)
-        start_n = int(cur_m.group(1)) if cur_m else 16
-        candidates = [HDHUB4U_BASE_URL] + [f"https://new{n}.hdhub4u.cl" for n in range(start_n + 1, start_n + 5)] + ["https://hdhub4u.tv", "https://hdhub4u.cl"]
+        start_n = int(cur_m.group(1)) if cur_m else 17
+        candidates = (
+            [HDHUB4U_BASE_URL]
+            + [f"https://new{n}.hdhub4u.cl" for n in range(start_n, start_n + 6)]
+            + ["https://hdhub4u.tv", "https://hdhub4u.cl"]
+        )
+        seen_c = set()
         for cand in candidates:
+            if cand in seen_c:
+                continue
+            seen_c.add(cand)
             try:
-                html, final_u = fetch_html(cand + "/", timeout=5)
+                html, final_u = fetch_html(cand + "/", timeout=6)
                 fu = urllib.parse.urlparse(final_u)
-                if 'hdhub4u' in fu.netloc.lower() and ('wp-content' in html or 'recent-movies' in html or 'movie-thumb' in html or len(html) > 5000):
+                if 'hdhub4u' in fu.netloc.lower() and ('recent-movies' in html or 'movie-thumb' in html) and len(_parse_hdhub4u_cards(html)) > 0:
                     HDHUB4U_BASE_URL = f"{fu.scheme}://{fu.netloc}"
                     return HDHUB4U_BASE_URL
             except Exception:
@@ -1633,71 +1652,164 @@ def _fetch_hdhub4u_html(post_url):
     """Fetches an HDHub4u page/post using the verified live mirror domain first (never stalls on dead archived domains)."""
     global HDHUB4U_BASE_URL
     pu = urllib.parse.urlparse(post_url)
-    target_url = f"{HDHUB4U_BASE_URL}{pu.path}" + (f"?{pu.query}" if pu.query else "") if ('hdhub4u' in pu.netloc.lower() and pu.path) else post_url
+    is_hdhub = 'hdhub4u' in pu.netloc.lower() and bool(pu.path)
+    target_url = f"{HDHUB4U_BASE_URL}{pu.path}" + (f"?{pu.query}" if pu.query else "") if is_hdhub else post_url
+    is_listing = is_hdhub and (pu.path in ('', '/') or pu.path.startswith(('/page/', '/category/')))
     try:
-        html, final_url = fetch_html(target_url, timeout=12)
+        html, final_url = fetch_html(target_url, timeout=10)
         fu = urllib.parse.urlparse(final_url)
         if 'hdhub4u' in fu.netloc.lower():
             HDHUB4U_BASE_URL = f"{fu.scheme}://{fu.netloc}"
+        if is_listing and 'recent-movies' not in html and len(_parse_hdhub4u_cards(html)) == 0:
+            raise RuntimeError("Listing page missing movie cards (possible mirror/block)")
         return html, final_url
-    except Exception:
-        if 'hdhub4u' in pu.netloc.lower() and pu.path:
-            live_base = _discover_live_hdhub4u_base()
+    except urllib.error.HTTPError as he:
+        if he.code == 404:
+            raise
+        if is_hdhub:
+            live_base = _discover_live_hdhub4u_base(force=True)
             fallback = f"{live_base}{pu.path}" + (f"?{pu.query}" if pu.query else "")
             if fallback != target_url:
-                return fetch_html(fallback, timeout=12)
+                return fetch_html(fallback, timeout=10)
+        raise
+    except Exception:
+        if is_hdhub:
+            live_base = _discover_live_hdhub4u_base(force=True)
+            fallback = f"{live_base}{pu.path}" + (f"?{pu.query}" if pu.query else "")
+            if fallback != target_url:
+                return fetch_html(fallback, timeout=10)
             if post_url != target_url:
-                return fetch_html(post_url, timeout=12)
+                return fetch_html(post_url, timeout=10)
         raise
 
-def get_latest_hdhub4u_movies(page=1, category=''):
-    """Fetches paginated movies & web series directly from HDHub4u (or Pingora backup if home HTML fails)."""
-    try:
-        p = max(1, int(page or 1))
-        cat = (category or '').strip()
-        if cat not in ALLOWED_HDHUB_CATEGORIES:
-            cat = ''
-        if cat:
-            url = f"{HDHUB4U_BASE_URL}/category/{cat}/" if p == 1 else f"{HDHUB4U_BASE_URL}/category/{cat}/page/{p}/"
-        else:
+def _check_post_has_links(item):
+    """Verifies a catalog/search item resolves to an active page with playable links (cached)."""
+    url = (item or {}).get('permalink', '')
+    if not url:
+        return False
+    slug = _hdhub_slug_key(url)
+    now = time.time()
+    cached = _POST_VALID_CACHE.get(slug)
+    if cached:
+        ts, valid = cached
+        ttl = 3600 if valid else 1800
+        if (now - ts) < ttl:
+            return valid
+    det = parse_movie_details(url)
+    has_links = bool(det.get("success")) and (
+        len(det.get("qualities") or []) > 0 or len(det.get("seasons") or []) > 0
+    )
+    err_str = str(det.get("error", "") or "")
+    # Cache both valid posts and deterministic dead posts (404 / 0 links)
+    if has_links or ('404' in err_str) or det.get("success"):
+        _POST_VALID_CACHE[slug] = (now, has_links)
+    return has_links
+
+def _filter_playable_items(items, max_workers=16):
+    """Filters out 404 / dead / no-link posts in parallel so users only see playable movies & series."""
+    if not items:
+        return []
+    flags = [True] * len(items)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
+        fut_map = {ex.submit(_check_post_has_links, it): idx for idx, it in enumerate(items)}
+        for fut in concurrent.futures.as_completed(fut_map):
+            idx = fut_map[fut]
+            try:
+                flags[idx] = bool(fut.result())
+            except Exception:
+                flags[idx] = False
+    return [it for idx, it in enumerate(items) if flags[idx]]
+
+def _merge_card_lists(primary, secondary):
+    """Merges two movie lists while preserving newest order and deduplicating by post slug."""
+    out = []
+    seen = set()
+    for lst in (primary or [], secondary or []):
+        for it in lst:
+            slug = _hdhub_slug_key(it.get('permalink', ''))
+            if not slug or slug in seen:
+                continue
+            seen.add(slug)
+            out.append(it)
+    return out
+
+def get_latest_hdhub4u_movies(page=1, category='', filter_links=True, max_items=48):
+    """Fetches paginated movies & web series from HDHub4u + Pingora live index and hides dead/no-link posts."""
+    p = max(1, int(page or 1))
+    cat = (category or '').strip()
+    if cat not in ALLOWED_HDHUB_CATEGORIES:
+        cat = ''
+
+    cards = []
+    ping_cards = []
+    if not cat:
+        def _fetch_site():
             url = f"{HDHUB4U_BASE_URL}/" if p == 1 else f"{HDHUB4U_BASE_URL}/page/{p}/"
-        html, _ = _fetch_hdhub4u_html(url)
-        cards = _parse_hdhub4u_cards(html)
-        if cards:
-            return cards
-    except Exception as e:
-        print("[HDHub4u Latest] error:", e)
-    if not (category or '').strip():
+            html, _ = _fetch_hdhub4u_html(url)
+            return _parse_hdhub4u_cards(html)
+
+        def _fetch_ping():
+            return _pingora_query('*', page=p, limit=36)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+            f_site = ex.submit(_fetch_site)
+            f_ping = ex.submit(_fetch_ping)
+            try:
+                cards = f_site.result() or []
+            except Exception as e:
+                print("[HDHub4u Latest] error:", e)
+            try:
+                ping_cards = f_ping.result() or []
+            except Exception as e:
+                print("[HDHub4u Pingora] error:", e)
+        merged = _merge_card_lists(ping_cards if p == 1 else cards, cards if p == 1 else ping_cards)
+    else:
         try:
-            return _pingora_query('*', page=page, limit=48)
+            url = f"{HDHUB4U_BASE_URL}/category/{cat}/" if p == 1 else f"{HDHUB4U_BASE_URL}/category/{cat}/page/{p}/"
+            html, _ = _fetch_hdhub4u_html(url)
+            cards = _parse_hdhub4u_cards(html)
         except Exception as e:
-            print("[HDHub4u Pingora Fallback] error:", e)
-    return []
+            print(f"[HDHub4u Cat {cat}] error:", e)
+        if not cards:
+            try:
+                q_cat = cat.replace('-movies', '').replace('-', ' ')
+                cards = _pingora_query(q_cat, page=p, limit=32)
+            except Exception as e:
+                print(f"[HDHub4u Cat Pingora {cat}] error:", e)
+        merged = cards
+
+    if max_items and len(merged) > max_items:
+        merged = merged[:max_items]
+    if filter_links and merged:
+        return _filter_playable_items(merged)
+    return merged
 
 _HOME_HUB_LOCK = threading.Lock()
 _HOME_HUB_CACHE = {"ts": 0.0, "data": None}
 
-def get_home_hub():
-    """Fetches Netflix/Prime/Hotstar/Genre horizontal rails + full home catalog from HDHub4u in parallel (5m cache)."""
+def get_home_hub(force_refresh=False):
+    """Fetches Netflix/Prime/Hotstar/Genre horizontal rails + full home catalog from HDHub4u in parallel (2m cache)."""
     now = time.time()
-    with _HOME_HUB_LOCK:
-        if _HOME_HUB_CACHE["data"] and (now - _HOME_HUB_CACHE["ts"]) < 300:
-            return _HOME_HUB_CACHE["data"]
+    if not force_refresh:
+        with _HOME_HUB_LOCK:
+            if _HOME_HUB_CACHE["data"] and (now - _HOME_HUB_CACHE["ts"]) < 120:
+                return _HOME_HUB_CACHE["data"]
 
+    _discover_live_hdhub4u_base(force=force_refresh)
     specs = [
-        ("latest", ""),
-        ("netflix", "netflix"),
-        ("prime", "amazon-prime-video"),
-        ("hotstar", "jiohotstar"),
-        ("hollywood", "hollywood-movies"),
-        ("bollywood", "bollywood-movies"),
-        ("web_series", "web-series"),
-        ("hindi_dubbed", "hindi-dubbed"),
-        ("south_hindi", "south-hindi-movies"),
+        ("latest", "", 48),
+        ("netflix", "netflix", 24),
+        ("prime", "amazon-prime-video", 24),
+        ("hotstar", "jiohotstar", 24),
+        ("hollywood", "hollywood-movies", 24),
+        ("bollywood", "bollywood-movies", 24),
+        ("web_series", "web-series", 24),
+        ("hindi_dubbed", "hindi-dubbed", 24),
+        ("south_hindi", "south-hindi-movies", 24),
     ]
     out = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=9) as ex:
-        fut_map = {ex.submit(get_latest_hdhub4u_movies, 1, cat): key for key, cat in specs}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
+        fut_map = {ex.submit(get_latest_hdhub4u_movies, 1, cat, True, cap): key for key, cat, cap in specs}
         for fut in concurrent.futures.as_completed(fut_map):
             k = fut_map[fut]
             try:
@@ -1712,14 +1824,17 @@ def get_home_hub():
     return out
 
 def search_hdhub4u(query, page=1, limit=24):
-    """Searches all HDHub4u movies & web series via Pingora live index."""
+    """Searches all HDHub4u movies & web series via Pingora live index and filters out dead/no-link posts."""
     q = (query or '').strip()
     lim = max(1, min(48, int(limit or 24)))
     if not q:
-        items = get_latest_hdhub4u_movies(page=page)
+        items = get_latest_hdhub4u_movies(page=page, filter_links=True)
         return items[:lim] if lim < len(items) else items
     try:
-        return _pingora_query(q, page=page, limit=lim)
+        fetch_lim = min(48, max(lim + 10, int(lim * 1.5)))
+        raw_hits = _pingora_query(q, page=page, limit=fetch_lim)
+        valid_hits = _filter_playable_items(raw_hits)
+        return valid_hits[:lim]
     except Exception as e:
         print("[HDHub4u Search] error:", e)
         return []
@@ -2182,9 +2297,17 @@ def _parse_ver_tuple(v):
 def get_app_info_payload():
     eff_url, raw_url = _get_effective_update_url()
     lan_ip = get_lan_ip()
+    try:
+        apk_ver_code = int(os.environ.get("STREAMHUB_APK_VERSION_CODE", "0") or 0)
+    except Exception:
+        apk_ver_code = 0
+    ota_active = os.path.exists(os.path.join(_APP_DATA_DIR, "ota", "streamhub_app.py"))
     return {
         "version": APP_VERSION,
         "frozen": IS_FROZEN,
+        "is_android": apk_ver_code > 0,
+        "apk_version_code": apk_ver_code,
+        "ota_active": ota_active,
         "exe_path": sys.executable if IS_FROZEN else os.path.abspath(__file__),
         "data_dir": _APP_DATA_DIR,
         "port": _ACTIVE_PORT,
@@ -2208,6 +2331,12 @@ def check_app_update():
             "latest_version": APP_VERSION,
             "update_available": False,
             "download_url": "",
+            "apk_download_url": "",
+            "apk_sha256": "",
+            "py_download_url": "",
+            "py_sha256": "",
+            "min_apk_version_code": 0,
+            "ota_supported": False,
             "sha256": "",
             "notes": "",
             "message": f"StreamHub v{APP_VERSION} ready! Updates push karne ke liye GitHub repo (owner/repo) ya version.json URL set karein.",
@@ -2221,6 +2350,10 @@ def check_app_update():
         latest = ""
         dl_url = ""
         apk_dl_url = ""
+        apk_sha256 = ""
+        py_dl_url = ""
+        py_sha256 = ""
+        min_apk_code = 0
         sha256 = ""
         notes = ""
         if isinstance(remote, dict) and 'tag_name' in remote and 'assets' in remote:
@@ -2234,12 +2367,19 @@ def check_app_update():
                     with urllib.request.urlopen(m_req, timeout=6) as mr:
                         m_json = json.loads(mr.read().decode('utf-8', errors='replace'))
                     sha256 = str(m_json.get('sha256', '') or '').strip().lower()
+                    apk_sha256 = str(m_json.get('apk_sha256', '') or '').strip().lower()
+                    py_sha256 = str(m_json.get('py_sha256', '') or '').strip().lower()
+                    min_apk_code = int(m_json.get('min_apk_version_code', 0) or 0)
                     if m_json.get('version'):
                         latest = str(m_json['version']).lstrip('vV').strip()
                     if m_json.get('download_url'):
                         dl_url = str(m_json['download_url']).strip()
                     if m_json.get('apk_download_url'):
                         apk_dl_url = str(m_json['apk_download_url']).strip()
+                    if m_json.get('py_download_url'):
+                        py_dl_url = str(m_json['py_download_url']).strip()
+                    if m_json.get('notes'):
+                        notes = str(m_json['notes']).strip()
                 except Exception:
                     pass
             if not dl_url:
@@ -2251,13 +2391,24 @@ def check_app_update():
                 apk_asset = next((a for a in assets if str(a.get('name', '')).lower().endswith('.apk')), None)
                 if apk_asset:
                     apk_dl_url = str(apk_asset.get('browser_download_url', '') or '').strip()
+            # ── OTA Python asset — Android instant feature update ke liye ─
+            if not py_dl_url:
+                py_asset = next((a for a in assets if str(a.get('name', '')).lower() == 'streamhub_app.py'), None)
+                if py_asset:
+                    py_dl_url = str(py_asset.get('browser_download_url', '') or '').strip()
         elif isinstance(remote, dict):
             latest = str(remote.get('version', APP_VERSION) or APP_VERSION).lstrip('vV').strip()
             dl_url = str(remote.get('download_url', '') or '').strip()
             apk_dl_url = str(remote.get('apk_download_url', '') or '').strip()
+            apk_sha256 = str(remote.get('apk_sha256', '') or '').strip().lower()
+            py_dl_url = str(remote.get('py_download_url', '') or '').strip()
+            py_sha256 = str(remote.get('py_sha256', '') or '').strip().lower()
+            min_apk_code = int(remote.get('min_apk_version_code', 0) or 0)
             sha256 = str(remote.get('sha256', '') or '').strip().lower()
             notes = str(remote.get('notes', '') or '').strip()
 
+        cur_apk_code = int(info.get("apk_version_code", 0) or 0)
+        ota_supported = bool(py_dl_url) and (cur_apk_code > 0) and (min_apk_code <= cur_apk_code)
         avail = bool(latest) and (_parse_ver_tuple(latest) > _parse_ver_tuple(APP_VERSION))
         return {
             **info,
@@ -2267,6 +2418,11 @@ def check_app_update():
             "update_available": avail,
             "download_url": dl_url,
             "apk_download_url": apk_dl_url,
+            "apk_sha256": apk_sha256,
+            "py_download_url": py_dl_url,
+            "py_sha256": py_sha256,
+            "min_apk_version_code": min_apk_code,
+            "ota_supported": ota_supported,
             "sha256": sha256,
             "notes": notes[:600],
             "message": f"Naya update v{latest} available hai!" if avail else f"StreamHub v{APP_VERSION} bilkul latest hai",
@@ -2412,6 +2568,66 @@ def start_app_update(download_url='', expected_sha256='', target_version=''):
     threading.Thread(target=_worker, daemon=True).start()
     return {"success": True, **get_update_status()}
 
+def apply_ota_py_update(py_url='', expected_sha256='', target_version=''):
+    """Downloads & verifies streamhub_app.py OTA update for Android APK (no 75MB APK reinstall needed)."""
+    try:
+        cur_apk_code = int(os.environ.get("STREAMHUB_APK_VERSION_CODE", "0") or 0)
+    except Exception:
+        cur_apk_code = 0
+    if cur_apk_code <= 0:
+        return {"success": False, "error": "OTA Python update sirf Android APK mode me supported hai"}
+    url = str(py_url or '').strip()
+    sha_exp = str(expected_sha256 or '').strip().lower()
+    tgt_ver = str(target_version or '').strip()
+    if not url:
+        chk = check_app_update()
+        url = str(chk.get("py_download_url", "") or "").strip()
+        sha_exp = sha_exp or str(chk.get("py_sha256", "") or "").strip().lower()
+        tgt_ver = tgt_ver or str(chk.get("latest_version", "") or "").strip()
+        min_code = int(chk.get("min_apk_version_code", 0) or 0)
+        if min_code > cur_apk_code:
+            return {"success": False, "error": "Is update ke liye naya APK install karna zaroori hai"}
+    if not url:
+        return {"success": False, "error": "OTA script download_url nahi mila"}
+
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": f"StreamHub/{APP_VERSION}"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read()
+        if len(raw) < 50_000:
+            return {"success": False, "error": "Downloaded update file incomplete hai"}
+        actual_sha = hashlib.sha256(raw).hexdigest().lower()
+        if sha_exp and actual_sha != sha_exp:
+            return {"success": False, "error": "OTA SHA-256 verification failed"}
+        code_text = raw.decode('utf-8')
+        if "def start_android_server" not in code_text:
+            return {"success": False, "error": "Invalid StreamHub engine module"}
+        compile(code_text, "streamhub_app.py", "exec")
+
+        ota_dir = os.path.join(_APP_DATA_DIR, "ota")
+        os.makedirs(ota_dir, exist_ok=True)
+        py_tmp = os.path.join(ota_dir, "streamhub_app.py.tmp")
+        py_dst = os.path.join(ota_dir, "streamhub_app.py")
+        meta_tmp = os.path.join(ota_dir, "ota_meta.json.tmp")
+        meta_dst = os.path.join(ota_dir, "ota_meta.json")
+        with open(py_tmp, 'wb') as f:
+            f.write(raw)
+        with open(meta_tmp, 'w', encoding='utf-8') as mf:
+            json.dump({
+                "version": tgt_ver or APP_VERSION,
+                "apk_version_code": cur_apk_code,
+                "sha256": actual_sha,
+            }, mf, indent=2)
+        os.replace(py_tmp, py_dst)
+        os.replace(meta_tmp, meta_dst)
+        return {
+            "success": True,
+            "version": tgt_ver,
+            "message": f"Instant update v{tgt_ver} installed! App restart ho raha hai...",
+        }
+    except Exception as e:
+        return {"success": False, "error": f"OTA update error: {e}"}
+
 def run_setup_action(action):
     if sys.platform != 'win32':
         return {"success": False, "error": "Windows only helper"}
@@ -2459,8 +2675,23 @@ def _clean_tag_text(raw_html):
     txt = _html.unescape(re.sub(r'<[^>]+>', ' ', raw_html))
     return re.sub(r'\s+', ' ', txt).strip()
 
-_PLAYABLE_HOSTS = ('hubcloud', 'hubdrive', 'hubcdn', 'hdstream4u', 'hblinks', 'gdflix', 'filepress')
-_SKIP_LINK_WORDS = ('admin', 'login', 'register', 'telegram', 'whatsapp', 'facebook', 'twitter', 'instagram', '4khdhub', 'snvhost', 'imdb.com')
+_PLAYABLE_HOSTS = ('hubcloud', 'hubdrive', 'hubcdn', 'hdstream4u', 'hblinks')
+_DIRECT_STREAM_DOMAINS = ('r2.dev', 'r2.cloudflarestorage.com', 'workers.dev', 'pixeldrain', 'googleusercontent.com')
+_SKIP_LINK_WORDS = ('admin', 'login', 'register', 'telegram', 'whatsapp', 'facebook', 'twitter', 'instagram', '4khdhub', 'snvhost', 'imdb.com', 'how-to')
+
+def _is_playable_resolved_host(url):
+    u = str(url or '').strip().lower()
+    if not u.startswith('http'):
+        return False
+    if any(bad in u for bad in ('hdhub4u.', 'how-to-download', 'telegram', 'whatsapp', 'openload', 'indishare', '9xplay', '9xupload', 'bdupload', 'uploadbaz', 'upfile', 'clicknupload', 'imgur', 'linkscare', 'keeplinks', 'hindifire')):
+        return False
+    pu = urllib.parse.urlparse(u)
+    host = pu.netloc.lower()
+    if any(h in host for h in _PLAYABLE_HOSTS) or any(h in host for h in _DIRECT_STREAM_DOMAINS):
+        return True
+    if pu.path.lower().endswith(('.mkv', '.mp4', '.m3u8')):
+        return True
+    return False
 
 def _rank_quality_label(label):
     t = (label or '').lower()
@@ -2534,7 +2765,7 @@ def _parse_hdhub4u_series_post(post_url, html):
                 lh = href.lower()
                 if 'hdstream4u.com' in lh and not hls_link:
                     hls_link = href
-                elif ('episode' in atxt.lower() or any(h in lh for h in ('greenmotors.', 'hblinks.', 'hubcloud.', 'hubdrive.', 'hubcdn.'))) and not dl_link:
+                elif (any(h in lh for h in ('greenmotors.', 'hblinks.', 'hubcloud.', 'hubdrive.', 'hubcdn.'))) and not dl_link:
                     dl_link = href
             if dl_link:
                 ep_dl_rows.append({
@@ -2574,10 +2805,28 @@ def _parse_hdhub4u_series_post(post_url, html):
 
     if packs:
         gm_map = _decode_greenmotors_map([p["link"] for p in packs])
+        cleaned_packs = []
         for p in packs:
-            if p["link"] in gm_map:
-                p["link"] = gm_map[p["link"]]
+            if 'greenmotors.' in p["link"]:
+                dec = gm_map.get(p["link"])
+                if not dec or not _is_playable_resolved_host(dec):
+                    continue
+                p["link"] = dec
+            cleaned_packs.append(p)
+        packs = cleaned_packs
         packs.sort(key=lambda p: _rank_quality_label(p["title"]), reverse=True)
+
+    if ep_dl_rows:
+        gm_ep_map = _decode_greenmotors_map([e["link"] for e in ep_dl_rows])
+        cleaned_eps = []
+        for e in ep_dl_rows:
+            if 'greenmotors.' in e["link"]:
+                dec = gm_ep_map.get(e["link"])
+                if not dec or not _is_playable_resolved_host(dec):
+                    continue
+                e["link"] = dec
+            cleaned_eps.append(e)
+        ep_dl_rows = cleaned_eps
 
     seasons = []
     if ep_dl_rows:
@@ -2648,7 +2897,14 @@ def _extract_hdhub4u_post_meta(body):
     }
 
 def parse_movie_details(post_url):
-    """Parses HDHub4u movie and web-series posts (Movies + Season Packs + Episodes + HDStream4u HLS)."""
+    """Parses HDHub4u movie and web-series posts (Movies + Season Packs + Episodes + HDStream4u HLS), cached 15m."""
+    slug = _hdhub_slug_key(post_url)
+    now = time.time()
+    with _DETAILS_CACHE_LOCK:
+        cached = _DETAILS_CACHE.get(slug)
+        if cached and (now - cached[0]) < 900:
+            _DETAILS_CACHE.move_to_end(slug)
+            return cached[1]
     try:
         html, _ = _fetch_hdhub4u_html(post_url)
         main_m = re.search(r'<main[^>]*>(.*?)</main>', html, re.S | re.I)
@@ -2659,6 +2915,10 @@ def parse_movie_details(post_url):
             series_res = _parse_hdhub4u_series_post(post_url, html)
             if series_res:
                 series_res["meta"] = meta
+                with _DETAILS_CACHE_LOCK:
+                    _DETAILS_CACHE[slug] = (time.time(), series_res)
+                    while len(_DETAILS_CACHE) > 400:
+                        _DETAILS_CACHE.popitem(last=False)
                 return series_res
 
         qualities = []
@@ -2698,11 +2958,18 @@ def parse_movie_details(post_url):
         gm_map = _decode_greenmotors_map([lnk for _, lnk in gm_candidates])
         for lbl, lnk in gm_candidates:
             hc = gm_map.get(lnk)
-            if hc and not any(bad in hc.lower() for bad in ('hdhub4u.', 'how-to-download', 'telegram', 'whatsapp')):
+            if hc and _is_playable_resolved_host(hc):
                 qualities.append({"title": lbl, "link": hc})
 
         qualities.sort(key=lambda q: _rank_quality_label(q['title']), reverse=True)
-        return {"success": True, "meta": meta, "qualities": qualities}
+        res = {"success": True, "meta": meta, "qualities": qualities}
+        if not qualities:
+            res["error"] = "Is movie ka koi active streaming link available nahi hai"
+        with _DETAILS_CACHE_LOCK:
+            _DETAILS_CACHE[slug] = (time.time(), res)
+            while len(_DETAILS_CACHE) > 400:
+                _DETAILS_CACHE.popitem(last=False)
+        return res
     except Exception as e:
         return {"success": False, "error": str(e), "qualities": []}
 
@@ -2982,7 +3249,7 @@ def resolve_hubcloud(input_url):
                 })
 
         # D. Check for HubCDN direct ?r= base64 (R2 or Google CDN)
-        m_r = re.search(r'[?&]r=([a-zA-Z0-9+/=]+)', html)
+        m_r = re.search(r'[?&]r=([a-zA-Z0-9+/=]+)', input_url + "\n" + current_url + "\n" + html)
         if m_r:
             try:
                 dec = base64.b64decode(m_r.group(1)).decode('utf-8', errors='ignore')
@@ -4763,7 +5030,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
         </div>
 
         <div class="nav-actions">
-            <span class="mode-chip" id="deviceModeChip"><span class="dot-live"></span><span id="deviceModeText">PC VLC Mode</span></span>
+            <button class="smart-pill active" id="btnNavUpdatePill" onclick="openUpdateModal()" style="display:none;padding:4px 10px;font-size:0.72rem;" title="New Update Available">⬆ Update</button>
+            <span class="mode-chip" id="deviceModeChip" onclick="openUpdateModal()" style="cursor:pointer;" title="App Updates &amp; Status"><span class="dot-live"></span><span id="deviceModeText">PC VLC Mode</span></span>
             <button class="btn-install-nav" id="btnInstallApp" onclick="triggerInstallApp()" title="Install App" aria-label="Install App">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 <span>Install</span>
@@ -5091,6 +5359,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 <button class="filter-btn active" id="filterAll" onclick="setCatalogFilter('all')">All</button>
                 <button class="filter-btn" id="filterMovies" onclick="setCatalogFilter('movies')">Movies</button>
                 <button class="filter-btn" id="filterSeries" onclick="setCatalogFilter('series')">Web Series</button>
+                <button class="filter-btn" id="btnRefreshFeed" onclick="refreshHomeFeed()" title="Load Latest Releases">↻ Refresh</button>
             </div>
         </div>
         <div class="cat-strip" id="categoryStrip" role="tablist" aria-label="Browse Categories">
@@ -5113,7 +5382,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
             <button class="smart-pill" data-sf="recent" onclick="toggleSmartFilter('recent', this)">2025–2026 New</button>
             <button class="smart-pill" data-sf="imdb7" onclick="toggleSmartFilter('imdb7', this)">⭐ IMDb 7+</button>
             <button class="smart-pill" id="btnSmartClear" onclick="clearSmartFilters()" style="display:none;">✕ Clear</button>
-            <button class="smart-pill" id="btnAppVersionChip" onclick="openUpdateModal()" style="margin-left:auto;" title="App Version, Auto-Update &amp; Easy Setup">v2.3.0 • Updates &amp; Setup</button>
+            <button class="smart-pill" id="btnAppVersionChip" onclick="openUpdateModal()" style="margin-left:auto;" title="App Version, Auto-Update &amp; Easy Setup">v2.4.0 • Updates</button>
         </div>
         <div class="search-grid" id="searchGrid"></div>
         <div class="load-more-wrap">
@@ -5303,19 +5572,22 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 </div>
                 <!-- PC EXE update button (hidden on Android) -->
                 <button type="button" id="btnApplyUpdate" class="btn-sm btn-vlc-sm" onclick="applyAppUpdateNow()" style="width:100%;min-height:38px;font-size:0.84rem;display:none;">Download &amp; Install Update</button>
-                <!-- Android APK update button -->
-                <a id="btnApkUpdate" href="#" target="_blank" rel="noopener" class="btn-sm btn-vlc-sm" style="display:none;width:100%;min-height:38px;font-size:0.84rem;text-align:center;text-decoration:none;line-height:38px;box-sizing:border-box;">📱 Download New APK</a>
+                <!-- Android Instant OTA Python update button (2 sec, ~0.5 MB) -->
+                <button type="button" id="btnOtaPyUpdate" class="btn-sm btn-vlc-sm" onclick="applyOtaPyUpdateNow()" style="display:none;width:100%;min-height:40px;font-size:0.85rem;margin-bottom:8px;">⚡ Instant Update (Fast ~0.5 MB)</button>
+                <!-- Android APK update button (native in-app download + installer) -->
+                <button type="button" id="btnApkUpdate" class="btn-sm btn-vlc-sm" onclick="applyAndroidApkUpdateNow()" style="display:none;width:100%;min-height:40px;font-size:0.85rem;">📱 Download &amp; Install APK</button>
+                <a id="linkApkExternal" href="#" target="_blank" rel="noopener" onclick="if(window.StreamHubAndroid&&window.StreamHubAndroid.openExternalUrl){window.StreamHubAndroid.openExternalUrl(this.href);return false;}" style="display:none;margin-top:8px;text-align:center;font-size:0.76rem;color:#93c5fd;text-decoration:underline;">Ya Browser se APK Download Karein</a>
             </div>
         </div>
 
-        <div style="background:#070910;border:1px solid var(--border);border-radius:12px;padding:12px;">
+        <div id="pcSetupToolsCard" style="background:#070910;border:1px solid var(--border);border-radius:12px;padding:12px;">
             <div style="font-size:0.8rem;font-weight:800;color:var(--gold);margin-bottom:8px;">1-Click Easy PC Setup Tools</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 150px;" onclick="runSetupAction('shortcut')">Add Desktop Shortcut</button>
                 <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 150px;" onclick="runSetupAction('firewall')">Fix Phone Wi-Fi Firewall</button>
             </div>
             <div style="font-size:0.72rem;color:var(--text-muted);margin-top:9px;line-height:1.45;">
-                Update push karne ke liye <b>build_exe.bat</b> chalakar naya <b>StreamHub.exe</b> + <b>StreamHub.apk</b> + <b>version.json</b> GitHub Release par upload karein — friends &amp; phone users 1-click me update kar payenge.
+                Update push karne ke liye <b>publish_release.bat</b> chalakar naya <b>StreamHub.exe</b> + <b>StreamHub.apk</b> + <b>version.json</b> GitHub Release par push karein — sab PC &amp; Android users 1-click me update kar payenge.
             </div>
         </div>
     </div>
@@ -5398,6 +5670,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
     let inlineNextCancelled = false;
     let lastInlineSaveTs = 0;
     let voiceRecog = null;
+    let lastBrowseScrollY = 0;
+    let lastBackExitTs = 0;
 
     function esc(s) {
         return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -5427,6 +5701,32 @@ html, body { max-width: 100%; overflow-x: hidden; }
         return /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(navigator.userAgent || '');
     }
 
+    function returnToHomeBrowse() {
+        const desktopInp = document.getElementById('searchInput');
+        const mobileInp = document.getElementById('mobileSearchInput');
+        if (desktopInp) desktopInp.value = '';
+        if (mobileInp) mobileInp.value = '';
+        browseSearchQuery = '';
+        browseCategory = '';
+        catalogFilter = 'all';
+        smartFilters = { fourK: false, hindi: false, recent: false, imdb7: false };
+        document.querySelectorAll('#smartFilterStrip .smart-pill[data-sf]').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('#categoryStrip .cat-chip').forEach(b => {
+            b.classList.toggle('active', b.getAttribute('data-cat') === '');
+        });
+        document.getElementById('filterAll')?.classList.add('active');
+        document.getElementById('filterMovies')?.classList.remove('active');
+        document.getElementById('filterSeries')?.classList.remove('active');
+        const bh = document.getElementById('browseHeading');
+        if (bh) bh.textContent = 'All Movies & Web Series';
+        if (ottHubData && Array.isArray(ottHubData.latest) && ottHubData.latest.length) {
+            _applyHomeHubData(ottHubData, false);
+        } else {
+            loadHomeHub();
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
     window.__shAndroidHandleBack = function() {
         const modals = ['inlineWebPlayerModal', 'trailerModalOverlay', 'qrModalOverlay', 'remoteModalOverlay', 'updateModalOverlay'];
         for (const id of modals) {
@@ -5439,9 +5739,46 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 return true;
             }
         }
+        const sugOpen = ['desktopSuggestBox', 'mobileSuggestBox'].some(id => {
+            const s = document.getElementById(id);
+            return s && s.classList.contains('open');
+        });
+        if (sugOpen) {
+            hideSuggestBoxes();
+            return true;
+        }
+        const rc = document.getElementById('resultsCard');
+        if (rc && rc.style.display !== 'none') {
+            rc.style.display = 'none';
+            const qc = document.getElementById('qualitiesCard');
+            if (qc && qc.style.display !== 'none') {
+                qc.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } else if (lastBrowseScrollY > 0) {
+                window.scrollTo({ top: lastBrowseScrollY, behavior: 'smooth' });
+            }
+            return true;
+        }
         const qc = document.getElementById('qualitiesCard');
         if (qc && qc.style.display !== 'none') {
             closeQualities();
+            if (lastBrowseScrollY > 0) {
+                window.scrollTo({ top: lastBrowseScrollY, behavior: 'smooth' });
+            }
+            return true;
+        }
+        const anySf = smartFilters.fourK || smartFilters.hindi || smartFilters.recent || smartFilters.imdb7;
+        if (browseSearchQuery || browseCategory || catalogFilter !== 'all' || anySf) {
+            returnToHomeBrowse();
+            return true;
+        }
+        if (window.scrollY > 360) {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return true;
+        }
+        const now = Date.now();
+        if (now - lastBackExitTs > 2200) {
+            lastBackExitTs = now;
+            showToast('Exit karne ke liye ek baar aur Back dabayein');
             return true;
         }
         return false;
@@ -5459,16 +5796,20 @@ html, body { max-width: 100%; overflow-x: hidden; }
         } catch (e) {}
     };
 
-    function showToast(msg, kind) {
+    function showToast(msg, kind, onClick) {
         const wrap = document.getElementById('toastContainer');
         const el = document.createElement('div');
         el.className = 'toast ' + (kind === 'err' ? 'toast-err' : 'toast-ok');
         el.textContent = msg;
+        if (typeof onClick === 'function') {
+            el.style.cursor = 'pointer';
+            el.onclick = () => { try { onClick(); } catch (e) {} el.remove(); };
+        }
         wrap.appendChild(el);
         setTimeout(() => {
             el.style.opacity = '0';
             setTimeout(() => el.remove(), 220);
-        }, 3200);
+        }, typeof onClick === 'function' ? 6000 : 3200);
     }
 
     function readStore(key, fallback) {
@@ -5736,7 +6077,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         }
         if (isAndroidApp()) {
             dismissIntro();
-            ['btnInstallApp', 'btnNavRemote', 'btnNavQr', 'phoneQrCard', 'movieQrCard', 'btnAppVersionChip', 'btnWatchOnline', 'btnInlineWeb'].forEach(id => {
+            ['btnInstallApp', 'btnNavRemote', 'btnNavQr', 'phoneQrCard', 'movieQrCard', 'btnWatchOnline', 'btnInlineWeb', 'pcSetupToolsCard'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.style.display = 'none';
             });
@@ -5757,6 +6098,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         }
         syncProgressFromServer();
         checkAppUpdate(false);
+        setTimeout(() => checkAppUpdate(true, false, true), 1200);
         loadLanQr();
         loadHomeHub();
         if (new URLSearchParams(window.location.search).get('show_updates') === '1') {
@@ -6000,42 +6342,52 @@ html, body { max-width: 100%; overflow-x: hidden; }
         resumeHeroAuto();
         renderOttRails(data);
 
-        catalogItems = data.latest;
-        browsePage = 1;
-        browseCategory = '';
-        browseSearchQuery = '';
-        const status = document.getElementById('searchStatus');
-        const btnMore = document.getElementById('btnLoadMore');
-        if (status) status.textContent = `${catalogItems.length} releases loaded from HDHub4u` + (fromCache ? ' (Refreshing...)' : '');
-        renderCatalogGrid();
-        if (btnMore && catalogItems.length >= 6) {
-            btnMore.style.display = 'inline-flex';
-            btnMore.textContent = 'Load More Movies (Page 2)';
+        if (!browseSearchQuery && !browseCategory) {
+            catalogItems = data.latest;
+            browsePage = 1;
+            const status = document.getElementById('searchStatus');
+            const btnMore = document.getElementById('btnLoadMore');
+            if (status) status.textContent = `${catalogItems.length} playable releases loaded` + (fromCache ? ' (Refreshing...)' : '');
+            renderCatalogGrid();
+            if (btnMore && catalogItems.length >= 6) {
+                btnMore.style.display = 'inline-flex';
+                btnMore.textContent = 'Load More Movies (Page 2)';
+            }
         }
         return true;
     }
 
-    async function loadHomeHub() {
+    async function loadHomeHub(forceRefresh) {
         let hadCache = false;
-        try {
-            const cachedRaw = localStorage.getItem('sh_home_cache_v1');
-            if (cachedRaw) {
-                const cached = JSON.parse(cachedRaw);
-                if (cached && _applyHomeHubData(cached, true)) hadCache = true;
-            }
-        } catch (e) {}
+        if (!forceRefresh) {
+            try {
+                const cachedRaw = localStorage.getItem('sh_home_cache_v2');
+                if (cachedRaw) {
+                    const cached = JSON.parse(cachedRaw);
+                    if (cached && _applyHomeHubData(cached, true)) hadCache = true;
+                }
+            } catch (e) {}
+        }
 
         try {
-            const resp = await fetch('/api/home_hub');
+            const resp = await fetch('/api/home_hub' + (forceRefresh ? '?refresh=1' : ''));
             const data = await resp.json();
             if (!_applyHomeHubData(data, false)) {
                 if (!hadCache) return loadLatest4K(1, '', false);
                 return;
             }
-            try { localStorage.setItem('sh_home_cache_v1', JSON.stringify(data)); } catch (e) {}
+            try { localStorage.setItem('sh_home_cache_v2', JSON.stringify(data)); } catch (e) {}
+            if (forceRefresh) showToast('Latest movies & links refreshed!');
         } catch (e) {
             if (!hadCache) loadLatest4K(1, '', false);
         }
+    }
+
+    async function refreshHomeFeed() {
+        const btn = document.getElementById('btnRefreshFeed');
+        if (btn) { btn.disabled = true; btn.textContent = 'Refreshing...'; }
+        await loadHomeHub(true);
+        if (btn) { btn.disabled = false; btn.textContent = '↻ Refresh'; }
     }
 
     function jumpCategory(catSlug) {
@@ -6482,6 +6834,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
     }
 
     async function loadMovieDetails(movie) {
+        lastBrowseScrollY = window.scrollY || 0;
         currentMovieMeta = movie;
         activeImdbId = movie.imdb_id || '';
         activeSeriesData = null;
@@ -6527,7 +6880,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
             renderDetailMeta(details.meta);
             select.innerHTML = '';
             if (!details.qualities || !details.qualities.length) {
-                select.innerHTML = '<option>Koi quality links nahi mile</option>';
+                select.innerHTML = '<option value="">Is movie ka koi working link available nahi hai</option>';
+                showToast(details.error || 'Is movie ka streaming link available nahi hai', 'err');
                 return;
             }
             details.qualities.forEach(q => {
@@ -6537,13 +6891,17 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 select.appendChild(opt);
             });
         } catch (e) {
-            select.innerHTML = '<option>Error loading qualities</option>';
+            select.innerHTML = '<option value="">Error loading qualities</option>';
+            showToast('Movie links load nahi ho paye: ' + e.message, 'err');
         }
     }
 
     function useSelectedQuality() {
         const select = document.getElementById('qualitySelect');
-        if (!select.value) return;
+        if (!select || !select.value) {
+            showToast('Is movie ka koi active streaming link available nahi hai', 'err');
+            return;
+        }
         document.getElementById('urlInput').value = select.value;
         resolveLink();
     }
@@ -7520,9 +7878,15 @@ html, body { max-width: 100%; overflow-x: hidden; }
         const dlBox = document.getElementById('updateDownloadBox');
         const notesEl = document.getElementById('updateNotesText');
         const applyBtn = document.getElementById('btnApplyUpdate');
+        const otaBtn = document.getElementById('btnOtaPyUpdate');
         const apkBtn = document.getElementById('btnApkUpdate');
+        const extLink = document.getElementById('linkApkExternal');
+        const onAndroid = isAndroidApp();
         if (meta) {
-            meta.textContent = `v${data.version || '2.3.0'} • ${data.frozen ? 'Desktop App (.exe)' : 'Python Mode'} • ${data.libvlc_ready ? '4K libVLC Ready' : 'Web Only'}`;
+            const envLabel = onAndroid
+                ? ('Android APK' + (data.ota_active ? ' (Instant OTA)' : ''))
+                : (data.frozen ? 'Desktop App (.exe)' : 'Python Mode');
+            meta.textContent = `v${data.version || '2.4.0'} • ${envLabel}${onAndroid ? '' : (' • ' + (data.libvlc_ready ? '4K libVLC Ready' : 'Web Only'))}`;
         }
         if (inp && !inp.value && data.update_url) inp.value = data.update_url;
         if (box) {
@@ -7530,18 +7894,42 @@ html, body { max-width: 100%; overflow-x: hidden; }
             box.textContent = data.error ? ('Check error: ' + data.error) : (data.message || 'Status ready');
         }
         pendingUpdateInfo = data.update_available ? data : null;
-        const showDl = data.update_available && (data.download_url || data.apk_download_url);
+        const hasAndroidAction = onAndroid && (data.ota_supported || data.apk_download_url);
+        const hasPcAction = !onAndroid && data.download_url;
+        const showDl = data.update_available && (hasAndroidAction || hasPcAction);
         if (dlBox) dlBox.style.display = showDl ? 'block' : 'none';
         if (notesEl) notesEl.textContent = data.notes || `New release v${data.latest_version} ready to install.`;
-        // Android: show APK button; PC: show EXE button
-        const onAndroid = isAndroidApp();
+        if (otaBtn) {
+            if (onAndroid && data.update_available && data.ota_supported && data.py_download_url) {
+                otaBtn.disabled = false;
+                otaBtn.textContent = `⚡ Instant Update v${data.latest_version || ''} (~0.5 MB)`;
+                otaBtn.style.display = 'block';
+            } else {
+                otaBtn.style.display = 'none';
+            }
+        }
         if (apkBtn) {
             if (onAndroid && data.update_available && data.apk_download_url) {
-                apkBtn.href = data.apk_download_url;
-                apkBtn.textContent = `📱 Download New APK v${data.latest_version || ''}`;
+                apkBtn.disabled = false;
+                apkBtn.textContent = data.ota_supported
+                    ? `📱 Or Download Full APK v${data.latest_version || ''}`
+                    : `📱 Download & Install APK v${data.latest_version || ''}`;
                 apkBtn.style.display = 'block';
+                if (data.ota_supported) {
+                    apkBtn.className = 'btn-sm btn-copy-sm';
+                } else {
+                    apkBtn.className = 'btn-sm btn-vlc-sm';
+                }
             } else {
                 apkBtn.style.display = 'none';
+            }
+        }
+        if (extLink) {
+            if (onAndroid && data.update_available && data.apk_download_url) {
+                extLink.href = data.apk_download_url;
+                extLink.style.display = 'block';
+            } else {
+                extLink.style.display = 'none';
             }
         }
         if (applyBtn) {
@@ -7555,26 +7943,135 @@ html, body { max-width: 100%; overflow-x: hidden; }
         }
     }
 
-    async function checkAppUpdate(manual, inModal) {
+    window.__shApkUpdateProgress = function(pct, state, msg) {
+        const wrap = document.getElementById('updateProgWrap');
+        const fill = document.getElementById('updateProgFill');
+        const box = document.getElementById('updateStatusBox');
+        const apkBtn = document.getElementById('btnApkUpdate');
+        if (wrap) wrap.style.display = 'block';
+        if (fill && typeof pct === 'number') fill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+        if (box && msg) {
+            box.style.color = state === 'error' ? '#fca5a5' : '#6ee7b7';
+            box.textContent = msg;
+        }
+        if (apkBtn) {
+            if (state === 'downloading') {
+                apkBtn.disabled = true;
+                apkBtn.textContent = `Downloading APK ${pct || 0}%...`;
+            } else if (state === 'error' || state === 'need_permission' || state === 'installer_opened') {
+                apkBtn.disabled = false;
+                const ver = (pendingUpdateInfo && pendingUpdateInfo.latest_version) || '';
+                apkBtn.textContent = state === 'need_permission'
+                    ? `Permission dene ke baad tap karein (v${ver})`
+                    : `📱 Download & Install APK v${ver}`;
+            }
+        }
+        if (state === 'error' && msg) showToast(msg, 'err');
+        if (state === 'need_permission') showToast('Allow "Install unknown apps", phir Install tap karein', 'ok');
+    };
+
+    async function applyOtaPyUpdateNow() {
+        if (!pendingUpdateInfo || !pendingUpdateInfo.py_download_url) return;
+        const btn = document.getElementById('btnOtaPyUpdate');
+        const wrap = document.getElementById('updateProgWrap');
+        const fill = document.getElementById('updateProgFill');
+        const box = document.getElementById('updateStatusBox');
+        if (btn) { btn.disabled = true; btn.textContent = '⚡ Installing instant update...'; }
+        if (wrap) wrap.style.display = 'block';
+        if (fill) fill.style.width = '45%';
+        try {
+            const resp = await fetch('/api/apply_ota_py', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    py_url: pendingUpdateInfo.py_download_url,
+                    sha256: pendingUpdateInfo.py_sha256 || '',
+                    version: pendingUpdateInfo.latest_version || ''
+                })
+            });
+            const st = await resp.json();
+            if (!st.success) {
+                if (fill) fill.style.width = '0%';
+                if (box) { box.style.color = '#fca5a5'; box.textContent = st.error || 'Instant update failed'; }
+                if (btn) { btn.disabled = false; btn.textContent = `⚡ Instant Update v${pendingUpdateInfo.latest_version || ''}`; }
+                showToast(st.error || 'Instant update failed', 'err');
+                return;
+            }
+            if (fill) fill.style.width = '100%';
+            if (box) { box.style.color = '#6ee7b7'; box.textContent = st.message || 'Restarting app...'; }
+            if (btn) btn.textContent = 'Restarting into new version...';
+            showToast('Update ready! App restart ho raha hai...', 'ok');
+            setTimeout(() => {
+                if (window.StreamHubAndroid && typeof window.StreamHubAndroid.restartApp === 'function') {
+                    window.StreamHubAndroid.restartApp();
+                } else {
+                    window.location.reload();
+                }
+            }, 900);
+        } catch (e) {
+            if (btn) btn.disabled = false;
+            showToast('Instant update error: ' + e.message, 'err');
+        }
+    }
+
+    function applyAndroidApkUpdateNow() {
+        if (!pendingUpdateInfo || !pendingUpdateInfo.apk_download_url) return;
+        const url = pendingUpdateInfo.apk_download_url;
+        const sha = pendingUpdateInfo.apk_sha256 || '';
+        if (window.StreamHubAndroid && typeof window.StreamHubAndroid.installApkUpdate === 'function') {
+            window.StreamHubAndroid.installApkUpdate(url, sha);
+        } else if (window.StreamHubAndroid && typeof window.StreamHubAndroid.openExternalUrl === 'function') {
+            window.StreamHubAndroid.openExternalUrl(url);
+        } else {
+            window.open(url, '_blank', 'noopener');
+        }
+    }
+
+    async function checkAppUpdate(manual, inModal, silentBg) {
         const chip = document.getElementById('btnAppVersionChip');
+        const navPill = document.getElementById('btnNavUpdatePill');
+        const modeTxt = document.getElementById('deviceModeText');
         const box = document.getElementById('updateStatusBox');
         if (inModal && box) box.textContent = 'Checking for updates...';
         try {
             const resp = await fetch(manual ? '/api/check_update' : '/api/app_info');
             const data = await resp.json();
-            if (chip && data && data.version) {
-                if (data.update_available) {
-                    chip.textContent = `⬆ Update v${data.latest_version}`;
-                    chip.classList.add('active');
-                } else {
-                    chip.textContent = `v${data.version} • ${data.libvlc_ready ? 'libVLC Ready' : 'Web Mode'}`;
+            if (data && data.version) {
+                if (chip) {
+                    if (data.update_available) {
+                        chip.textContent = `⬆ Update v${data.latest_version}`;
+                        chip.classList.add('active');
+                    } else {
+                        chip.textContent = isAndroidApp()
+                            ? `v${data.version} • Updates`
+                            : `v${data.version} • ${data.libvlc_ready ? 'libVLC Ready' : 'Web Mode'}`;
+                        chip.classList.remove('active');
+                    }
+                }
+                if (navPill) {
+                    if (data.update_available) {
+                        navPill.textContent = `⬆ v${data.latest_version}`;
+                        navPill.style.display = 'inline-flex';
+                    } else {
+                        navPill.style.display = 'none';
+                    }
+                }
+                if (data.update_available && isAndroidApp() && modeTxt) {
+                    modeTxt.textContent = `⬆ Update v${data.latest_version}`;
                 }
             }
             if (inModal) renderUpdateModalState(data);
-            else if (manual) showToast(data.message || `StreamHub v${data.version || '2.3.0'} active`);
+            else if (silentBg) {
+                if (data && data.update_available) {
+                    pendingUpdateInfo = data;
+                    showToast(`⬆ New StreamHub v${data.latest_version} available! Tap here to update`, 'ok', () => openUpdateModal());
+                }
+            } else if (manual) {
+                showToast(data.message || `StreamHub v${data.version || '2.4.0'} active`);
+            }
         } catch (e) {
             if (inModal && box) box.textContent = 'Update check error';
-            else if (manual) showToast('Update check failed', 'err');
+            else if (manual && !silentBg) showToast('Update check failed', 'err');
         }
     }
 
@@ -8205,9 +8702,10 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
             self._pipe_and_cache(sess, seek_upstream, resp, cur_pos, end_byte)
             return
 
-        # Combined OTT Rails + Full Home Catalog API (cached 5m, parallel upstream)
+        # Combined OTT Rails + Full Home Catalog API (cached 2m, parallel upstream)
         if path == '/api/home_hub':
-            self._json(get_home_hub())
+            force_ref = qp.get('refresh', ['0'])[0] == '1'
+            self._json(get_home_hub(force_refresh=force_ref))
             return
 
         # Latest HDHub4u Movies & Web Series API (with pagination & category support)
@@ -8798,6 +9296,18 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
                 body = json.loads(raw_body.decode('utf-8')) if raw_body else {}
                 self._json(start_app_update(
                     download_url=body.get('download_url', ''),
+                    expected_sha256=body.get('sha256', ''),
+                    target_version=body.get('version', ''),
+                ))
+            except Exception as e:
+                self._json({"success": False, "error": str(e)}, status=500)
+            return
+
+        if self.path == '/api/apply_ota_py':
+            try:
+                body = json.loads(raw_body.decode('utf-8')) if raw_body else {}
+                self._json(apply_ota_py_update(
+                    py_url=body.get('py_url', ''),
                     expected_sha256=body.get('sha256', ''),
                     target_version=body.get('version', ''),
                 ))

@@ -1,138 +1,46 @@
-# 🚀 StreamHub — GitHub Update Pipeline Setup Guide
+# 🚀 StreamHub — GitHub Auto-Update System
 
-Ye guide follow karo aur ek baar setup ke baad, **har nayi version automatically sab users tak pahunch jayegi.**
-
----
-
-## ✅ Step 1: GitHub Par Repo Banao
-
-1. [github.com/new](https://github.com/new) par jao
-2. Repository banao:
-   - **Repository name**: `streamhub`
-   - **Visibility**: ✅ **Public** (zaruri hai — private mein APK download nahi hoga)
-   - README: skip karo
-3. **Create repository** click karo
+Ab jab bhi aap **StreamHub** mein koi naya feature add karo ya bug fix karo, bas **1 command / double-click** chalao — aur sabhi PC + Android users ko update automatically app ke andar mil jayega!
 
 ---
 
-## ✅ Step 2: Git Setup & Code Upload (Pehli Baar)
+## 🎯 Ye Kaise Kaam Karta Hai
 
-PowerShell open karo aur ye commands chalaao:
+### 1. Android Users Ke Liye (2 Tarike):
+- **⚡ Instant Update (~0.5 MB, 2 seconds)**: Jab aap sirf `app.py` (UI, movie sites, link resolvers, bug fixes) mein feature add karte ho, toh user ke phone mein app sirf `streamhub_app.py` download karke SHA-256 verify karta hai aur 2 second mein restart hokar naya feature dikha deta hai — **75 MB APK dubara install karne ki zarurat bhi nahi!**
+- **📱 Full APK Update**: Jab Android/Kotlin player ya native features badalte ho, toh app ke andar hi `StreamHub.apk` download hokar seedha Android Installer open ho jata hai.
 
-```powershell
-cd "C:\Users\choya\Downloads\StreamHub\StreamHub"
-
-# Git initialize karo
-git init
-git remote add origin https://github.com/khushal-jangid/streamhub.git
-git branch -M main
-
-# .gitignore banao
-@"
-__pycache__/
-*.pyc
-build/work/
-dist/StreamHub.exe
-StreamHub.exe
-*.log
-"@ | Out-File .gitignore -Encoding UTF8
-
-# Pehli baar sab upload karo
-git add .
-git commit -m "Initial commit: StreamHub v2.3.0"
-git push -u origin main
-```
-
-> Pehli baar GitHub login maangega — browser mein authenticate ho jayega.
+### 2. Windows PC Users Ke Liye:
+- App automatically `StreamHub.exe` download karta hai, SHA-256 verify karta hai, aur khud restart hokar update ho jata hai.
 
 ---
 
-## ✅ Step 3: Nayi Version Release Kaise Karo (Har Baar)
+## 🛠️ Naya Feature Push Karne Ka Tarika (1-Click!)
 
-Jab bhi **new feature add karo ya bug fix karo**:
-
-### a) Version bump karo in `app.py`:
-```python
-APP_VERSION = "2.4.0"   # line 55 — version badhao
-```
-
-### b) APK root folder mein rakhna hai:
-```
-C:\Users\choya\Downloads\StreamHub\StreamHub\StreamHub.apk  ← updated APK yahan
-```
-
-### c) Build + Release:
-```powershell
-cd "C:\Users\choya\Downloads\StreamHub\StreamHub"
-
-# EXE build karo
-python build_exe.py
-
-# Commit karo
-git add .
-git commit -m "v2.4.0: Naya feature XYZ add kiya"
-
-# Tag lagao — yahi GitHub Actions ko trigger karega!
-git tag v2.4.0
-git push origin main
-git push origin v2.4.0
-```
-
-**Bas!** GitHub Actions automatically (5-10 min mein):
-1. ✅ `StreamHub.exe` build karega
-2. ✅ `version.json` update karega (real sha256 ke saath)
-3. ✅ GitHub Release banayega
-4. ✅ `StreamHub.exe` + `StreamHub.apk` + `version.json` upload karega
+1. Apne `app.py` (ya `StreamHubAndroid` ke code) mein naya feature add karo.
+2. **`publish_release.bat`** par double-click karo (ya PowerShell mein chalao):
+   ```powershell
+   cd "C:\Users\choya\Downloads\StreamHub\StreamHub"
+   .\publish_release.ps1 -Version "2.5.0" -Notes "Naya feature add kiya!"
+   ```
+3. Ye script automatically:
+   - `app.py` ko `StreamHubAndroid\app\src\main\python\streamhub_app.py` mein sync karta hai
+   - Naya `StreamHub.apk` build karta hai
+   - Naya `StreamHub.exe` build karta hai
+   - `dist\version.json` mein SHA-256 checksums update karta hai
+   - Code GitHub par push karta hai aur `StreamHub.exe`, `StreamHub.apk`, `streamhub_app.py`, `version.json` ke saath nayi GitHub Release publish karta hai!
 
 ---
 
-## ✅ Step 4: Users Ko Ek Baar Batana Hoga (Pehli Baar Only)
+## ⚠️ Pehli Baar Users Ko Kya Dena Hoga
 
-Pehli APK share karte waqt users ko ye URL app mein set karna hoga:
-
-```
-khushal-jangid/streamhub
-```
-
-**Settings (⚙) → Update Source field mein dalo → Save & Check**
-
-Iske baad **hamesha ke liye automatic** — user ko kuch nahi karna padega!
+- **v2.4.0** (nayi `StreamHub.apk`) ek baar users ko bhej do (ya `https://github.com/khushal-jangid/streamhub/releases/latest` se download karwao).
+- Iske baad **kabhi manually APK share karne ki zarurat nahi** — app khulne par khud GitHub check karega aur update dikha dega!
 
 ---
 
-## 📱 Android Users Ka Update Flow
+## 🔗 GitHub Links
 
-```
-Tu: git tag v2.4.0 → git push
-           ↓ (5-10 min)
-GitHub Actions: EXE + APK upload on Release page
-           ↓ (automatic)
-User app khole: "⬆ Update v2.4.0" notification dikhega
-           ↓
-"📱 Download New APK" button tap kare
-           ↓
-Browser mein APK download ho → Install → Done ✅
-```
-
----
-
-## 🔗 Teri Important Links
-
-| Kya | URL |
-|-----|-----|
-| 📦 Releases page | https://github.com/khushal-jangid/streamhub/releases |
-| 📄 version.json | https://github.com/khushal-jangid/streamhub/releases/latest/download/version.json |
-| 📱 Latest APK | https://github.com/khushal-jangid/streamhub/releases/latest/download/StreamHub.apk |
-| 🖥️ Latest EXE | https://github.com/khushal-jangid/streamhub/releases/latest/download/StreamHub.exe |
-| ⚙️ Actions log | https://github.com/khushal-jangid/streamhub/actions |
-
----
-
-## ⚠️ Important Notes
-
-> **APK Manual Step**: `StreamHub.apk` repo root mein commit karna padega.
-> GitHub Actions isko automatically release mein upload kar dega.
-
-> **VLC Runtime**: Agar `build/vlc_runtime.zip` repo mein committed nahi hai toh
-> EXE Actions par build fail hogi. Is case mein manually `dist/StreamHub.exe`
-> build karke Actions artifacts se download karo ya pre-built EXE commit karo.
+- **Repo**: https://github.com/khushal-jangid/streamhub
+- **Releases**: https://github.com/khushal-jangid/streamhub/releases
+- **Latest Download**: https://github.com/khushal-jangid/streamhub/releases/latest

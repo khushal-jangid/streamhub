@@ -1,8 +1,13 @@
 {
-  "version": "2.3.0",
-  "download_url": "https://github.com/khushal-jangid/streamhub/releases/latest/download/StreamHub.exe",
-  "apk_download_url": "https://github.com/khushal-jangid/streamhub/releases/latest/download/StreamHub.apk",
-  "sha256": "5de64c35449d77e7afe5a1e5c159e934ad008d1dde0a7c75056aeb1c38faa3e5",
-  "size_bytes": 87645853,
-  "notes": "StreamHub v2.3.0: Standalone 4K Cinema App with built-in libVLC & 1-click Auto-Updater for PC and Android."
+    "version":  "2.4.0",
+    "download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.4.0/StreamHub.exe",
+    "sha256":  "00d6350b16743167a4f09f3a69e3e9775a78faaf5f40dbfb1f2a7a0994f2e9df",
+    "size_bytes":  87658387,
+    "apk_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.4.0/StreamHub.apk",
+    "apk_sha256":  "b7375ee32776d3fa0e2bfa498ba825357812405cfeaa6ec213d3517bf387a6ca",
+    "apk_size_bytes":  77971008,
+    "py_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.4.0/streamhub_app.py",
+    "py_sha256":  "e5d31f26cedc8eb2be62342baf295a9e86deca431d9a2a936e81aa9206edd1c0",
+    "min_apk_version_code":  2,
+    "notes":  "StreamHub v2.4.0: Netflix-style Android player (custom play/pause, seek scrubber, vertical brightness \u0026 volume slide bars), step-by-step Android back navigation, auto-filtered working movie links, fresh HDHub4u mirror sync, and 1-tap GitHub Auto-Update + Instant OTA!"
 }
