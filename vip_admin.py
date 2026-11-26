@@ -298,19 +298,22 @@ ADMIN_HTML = r"""<!doctype html>
 <style>
   *{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
   body{margin:0;background:#09090b;color:#f4f4f5;padding:20px}
-  .wrap{max-width:1020px;margin:0 auto}
+  .wrap{max-width:1060px;margin:0 auto}
   .card{background:#12131a;border:1px solid #27272a;border-radius:14px;padding:18px;margin-bottom:16px}
-  h1{margin:0 0 6px;font-size:1.35rem;display:flex;align-items:center;gap:10px}
+  h1{margin:0 0 6px;font-size:1.35rem;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .badge{font-size:.72rem;background:#eab308;color:#000;padding:3px 8px;border-radius:999px;font-weight:800}
   .sub{color:#a1a1aa;font-size:.86rem;margin-bottom:12px}
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .stats-row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px}
+  .stat-pill{background:#181a24;border:1px solid #27272a;border-radius:9px;padding:6px 11px;font-size:.78rem;color:#d4d4d8}
+  .stat-pill b{color:#fde047}
   input,select{background:#09090b;color:#fff;border:1px solid #3f3f46;border-radius:9px;padding:9px 12px;font-size:.9rem}
   .btn{border:none;border-radius:9px;padding:9px 14px;font-weight:700;cursor:pointer;font-size:.84rem;background:#27272a;color:#fff}
   .btn:hover{background:#3f3f46}
   .btn-red{background:#e50914}.btn-red:hover{background:#c80812}
   .btn-gold{background:#eab308;color:#000}.btn-gold:hover{background:#ca8a04}
   .btn-green{background:#16a34a}.btn-sm{padding:5px 10px;font-size:.76rem}
-  .plans-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:10px 0 14px}
+  .plans-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;margin:10px 0 14px}
   .plan-box{background:#181a24;border:1.5px solid #2d3142;border-radius:12px;padding:12px;cursor:pointer;text-align:left;color:#fff;transition:0.15s}
   .plan-box:hover{border-color:#52525b}
   .plan-box.active{border-color:#eab308;background:rgba(234,179,8,.11)}
@@ -335,13 +338,15 @@ ADMIN_HTML = r"""<!doctype html>
   .st-blocked{background:rgba(239,68,68,.2);color:#fca5a5}
   details summary{cursor:pointer;color:#a1a1aa;font-size:.83rem;font-weight:600}
   textarea{width:100%;height:130px;background:#09090b;color:#cbd5e1;border:1px solid #3f3f46;border-radius:8px;padding:8px;font-family:monospace;font-size:.74rem;margin-top:8px}
+  #toast{position:fixed;bottom:18px;right:18px;background:#16a34a;color:#fff;padding:10px 14px;border-radius:10px;font-size:.82rem;font-weight:700;display:none;z-index:99;box-shadow:0 8px 24px rgba(0,0,0,.45)}
 </style>
 </head>
 <body>
+<div id="toast"></div>
 <div class="wrap">
   <div class="card">
-    <h1>StreamHub VIP Admin Panel <span class="badge">streamhub-vip</span></h1>
-    <div class="sub">15 Days / 1 Month / 3 Months (HD/1080p Only — 4K Locked) &amp; 6 Months / 1 Year (4K Ultra Unlocked). Default: 1 Key = 1 Phone.</div>
+    <h1>StreamHub VIP Admin Panel <span class="badge">streamhub-vip • v2.6.1</span></h1>
+    <div class="sub">15 Din / 30 Din / 3 Months (Sab HD/1080p Unlocked — 4K Locked) &amp; 6 Months / 1 Year (Sab + 4K Ultra HDR Unlocked). Default: 1 Key = 1 Phone.</div>
     <div class="row">
       <input id="saPath" style="flex:1;min-width:260px" placeholder="Service Account JSON path">
       <button class="btn" onclick="saveSa()">Connect JSON</button>
@@ -350,34 +355,34 @@ ADMIN_HTML = r"""<!doctype html>
   </div>
 
   <div class="card">
-    <h2 style="margin:0 0 8px;font-size:1.05rem">1. Official Premium Plans (Click to Select)</h2>
+    <h2 style="margin:0 0 8px;font-size:1.05rem">1. Premium Plans Choose Karein (Click to Select)</h2>
     <div class="plans-grid" id="plansGrid">
-      <button type="button" class="plan-box active" onclick="pickPlan(1296000,29,false,'15 Days Starter',this)">
-        <div style="font-weight:800;font-size:.9rem">15 Days</div>
+      <button type="button" class="plan-box active" data-plan="15d" onclick="pickPlan(1296000,29,false,'15 Days Starter',this)">
+        <div style="font-weight:800;font-size:.9rem">15 Din (Starter)</div>
         <div class="plan-price">&#8377;29</div>
         <div style="font-size:.74rem;color:#a1a1aa">All HD / 1080p</div>
         <span class="plan-tag tag-hd">4K LOCKED</span>
       </button>
-      <button type="button" class="plan-box" onclick="pickPlan(2592000,49,false,'1 Month Popular',this)">
-        <div style="font-weight:800;font-size:.9rem">1 Month (30d)</div>
+      <button type="button" class="plan-box" data-plan="30d" onclick="pickPlan(2592000,49,false,'1 Month Popular',this)">
+        <div style="font-weight:800;font-size:.9rem">1 Month (30 Din)</div>
         <div class="plan-price">&#8377;49</div>
         <div style="font-size:.74rem;color:#a1a1aa">All HD / 1080p</div>
         <span class="plan-tag tag-hd">4K LOCKED</span>
       </button>
-      <button type="button" class="plan-box" onclick="pickPlan(7776000,119,false,'3 Months Value HD',this)">
-        <div style="font-weight:800;font-size:.9rem">3 Months (90d)</div>
+      <button type="button" class="plan-box" data-plan="3m" onclick="pickPlan(7776000,119,false,'3 Months Value HD',this)">
+        <div style="font-weight:800;font-size:.9rem">3 Months (90 Din)</div>
         <div class="plan-price">&#8377;119</div>
         <div style="font-size:.74rem;color:#a1a1aa">All HD / 1080p</div>
         <span class="plan-tag tag-hd">4K LOCKED</span>
       </button>
-      <button type="button" class="plan-box" onclick="pickPlan(15552000,199,true,'6 Months 4K Ultra',this)">
-        <div style="font-weight:800;font-size:.9rem">6 Months (180d)</div>
+      <button type="button" class="plan-box" data-plan="6m" onclick="pickPlan(15552000,199,true,'6 Months 4K Ultra',this)">
+        <div style="font-weight:800;font-size:.9rem">6 Months (180 Din)</div>
         <div class="plan-price">&#8377;199</div>
         <div style="font-size:.74rem;color:#a1a1aa">Full 4K HDR + Vault</div>
         <span class="plan-tag tag-4k">4K UNLOCKED</span>
       </button>
-      <button type="button" class="plan-box" onclick="pickPlan(31536000,349,true,'1 Year 4K Legend',this)">
-        <div style="font-weight:800;font-size:.9rem">1 Year (365d)</div>
+      <button type="button" class="plan-box" data-plan="1y" onclick="pickPlan(31536000,349,true,'1 Year 4K Legend',this)">
+        <div style="font-weight:800;font-size:.9rem">1 Year (365 Din)</div>
         <div class="plan-price">&#8377;349</div>
         <div style="font-size:.74rem;color:#a1a1aa">All 4K HDR + Max</div>
         <span class="plan-tag tag-4k">4K UNLOCKED</span>
@@ -393,13 +398,13 @@ ADMIN_HTML = r"""<!doctype html>
     </div>
 
     <div class="row">
-      <label style="font-size:.8rem;color:#a1a1aa">Seconds:<br><input id="durSec" type="number" value="1296000" min="1" style="width:125px"></label>
+      <label style="font-size:.8rem;color:#a1a1aa">Seconds:<br><input id="durSec" type="number" value="1296000" min="1" oninput="sync4kFromDur()" style="width:125px"></label>
       <label style="font-size:.8rem;color:#a1a1aa">Price &#8377;:<br><input id="priceInr" type="number" value="29" min="0" style="width:85px"></label>
       <label style="font-size:.8rem;color:#a1a1aa">Devices:<br><input id="maxDev" type="number" value="1" min="1" max="5" style="width:75px"></label>
       <label style="font-size:.8rem;color:#a1a1aa">Label:<br><input id="lbl" value="15 Days Starter" style="width:165px"></label>
-      <label style="font-size:.8rem;color:#a1a1aa">4K Unlock:<br><select id="allow4k" style="width:125px"><option value="0">Locked (HD/FHD)</option><option value="1">Unlocked (4K)</option></select></label>
-      <label style="font-size:.8rem;color:#a1a1aa">Custom Code:<br><input id="custCode" placeholder="Auto" style="width:140px;text-transform:uppercase"></label>
-      <div style="align-self:flex-end"><button class="btn btn-gold" onclick="genKey()">+ Generate Key</button></div>
+      <label style="font-size:.8rem;color:#a1a1aa">4K Unlock:<br><select id="allow4k" style="width:135px"><option value="0">Locked (HD/FHD)</option><option value="1">Unlocked (4K)</option></select></label>
+      <label style="font-size:.8rem;color:#a1a1aa">Custom Code:<br><input id="custCode" placeholder="Auto" style="width:135px;text-transform:uppercase"></label>
+      <div style="align-self:flex-end"><button id="btnGenKey" class="btn btn-gold" onclick="genKey()">+ Generate Key</button></div>
     </div>
     <div id="genOut" class="msg"></div>
   </div>
@@ -409,6 +414,7 @@ ADMIN_HTML = r"""<!doctype html>
       <h2 style="margin:0;font-size:1.05rem">All VIP Keys</h2>
       <button class="btn btn-sm" onclick="loadKeys()">Refresh List</button>
     </div>
+    <div id="statsRow" class="stats-row"></div>
     <div style="overflow-x:auto">
       <table><thead><tr><th>Key Code</th><th>Plan &amp; Price</th><th>Tier</th><th>Status</th><th>Devices</th><th>Actions</th></tr></thead><tbody id="tblBody"></tbody></table>
     </div>
@@ -423,6 +429,11 @@ ADMIN_HTML = r"""<!doctype html>
   </div>
 </div>
 <script>
+const CUTOFF_4K_SEC = 7776000;
+function sync4kFromDur(){
+  const s = +(document.getElementById('durSec').value || 0);
+  document.getElementById('allow4k').value = s > CUTOFF_4K_SEC ? '1' : '0';
+}
 function pickPlan(s, price, is4k, lbl, btn){
   document.getElementById('durSec').value=s;
   document.getElementById('priceInr').value=price;
@@ -430,6 +441,12 @@ function pickPlan(s, price, is4k, lbl, btn){
   document.getElementById('lbl').value=lbl;
   document.querySelectorAll('.plan-box,.preset').forEach(b=>b.classList.remove('active'));
   if(btn) btn.classList.add('active');
+}
+function fmtRem(s){ if(s<60) return Math.ceil(s)+'s'; if(s<3600) return Math.floor(s/60)+'m'; if(s<86400) return Math.floor(s/3600)+'h'; return Math.floor(s/86400)+'d'; }
+function buildShareMsg(it){
+  const qTxt = it.allow_4k ? 'Full 4K HDR + HD Unlocked' : 'All HD/1080p Unlocked (4K Locked - 6M+ me unlock)';
+  const prTxt = (it.price_inr!==null&&it.price_inr!==undefined)?` (Rs ${it.price_inr})`:'';
+  return `StreamHub VIP Key: ${it.code}\nPlan: ${it.label||'VIP Pass'}${prTxt}\nValidity: ${fmtRem(it.duration_seconds)} (${it.max_devices||1} Phone)\nQuality: ${qTxt}\nApp me 'VIP' button par click karke Key paste karein.`;
 }
 async function init(){
   const r=await (await fetch('/api/admin/init')).json();
@@ -446,6 +463,7 @@ async function saveSa(){
   if(r.success){ st.className='msg ok'; st.textContent='Connected cleanly!'; loadKeys(); }
   else { st.className='msg err'; st.textContent=r.error||'Failed'; }
 }
+let lastCreatedItem = null;
 async function genKey(){
   const out=document.getElementById('genOut');
   const prVal=document.getElementById('priceInr').value;
@@ -458,62 +476,99 @@ async function genKey(){
     custom_code:document.getElementById('custCode').value.trim()
   })})).json();
   if(r.success){
+    lastCreatedItem = r.item;
     const c=r.item.code;
-    const tLbl=r.item.allow_4k?'4K ULTRA':'HD/1080p Only';
+    const tLbl=r.item.allow_4k?'4K ULTRA':'HD/1080p Only (4K Lock)';
     out.className='msg ok';
-    out.innerHTML=`Key Ready: <b style="font-size:1rem">${c}</b> (${r.item.label} • ${tLbl}) &nbsp; <button class="btn btn-sm" onclick="copyText('${c}')">Copy Key</button>`;
+    out.innerHTML=`Key Ready: <b style="font-size:1rem">${c}</b> (${r.item.label} • ${tLbl}) &nbsp; <button class="btn btn-sm" onclick="copyText('${c}')">Copy Key</button> <button class="btn btn-sm btn-green" onclick="copyLastMsg()">Copy Customer Msg</button>`;
     document.getElementById('custCode').value='';
     loadKeys();
   } else { out.className='msg err'; out.textContent=r.error||'Error'; }
 }
-function fmtRem(s){ if(s<60) return Math.ceil(s)+'s'; if(s<3600) return Math.floor(s/60)+'m'; if(s<86400) return Math.floor(s/3600)+'h'; return Math.floor(s/86400)+'d'; }
+function copyLastMsg(){ if(lastCreatedItem) copyText(buildShareMsg(lastCreatedItem)); }
+let itemsByCode = {};
 async function loadKeys(){
   const r=await (await fetch('/api/admin/list')).json();
   const tb=document.getElementById('tblBody'); tb.innerHTML='';
-  if(!r.success){ tb.innerHTML=`<tr><td colspan="6" style="color:#fca5a5">${r.error}</td></tr>`; return; }
-  (r.items||[]).forEach(it=>{
+  const sr=document.getElementById('statsRow');
+  if(!r.success){ sr.innerHTML=''; tb.innerHTML=`<tr><td colspan="6" style="color:#fca5a5">${r.error}</td></tr>`; return; }
+  const items = r.items || [];
+  itemsByCode = {};
+  let cntAct=0, cntUn=0, cntExp=0;
+  items.forEach(it=>{
+    itemsByCode[it.code] = it;
+    if(it.state==='active') cntAct++;
+    else if(it.state==='unused') cntUn++;
+    else if(it.state==='expired') cntExp++;
     const stCls='st-'+it.state;
     const stTxt=it.state==='active'?`Active (${fmtRem(it.remaining_sec)} left)`:it.state.toUpperCase();
     const prTxt=(it.price_inr!==null&&it.price_inr!==undefined)?`&#8377;${it.price_inr}`:'-';
     const tierBadge=it.allow_4k?'<span class="plan-tag tag-4k">4K ULTRA</span>':'<span class="plan-tag tag-hd">HD/1080p</span>';
     tb.innerHTML+=`<tr>
       <td><code>${it.code}</code></td>
-      <td>${it.label||''}<br><small style="color:#71717a">${prTxt} • ${it.duration_seconds}s</small></td>
+      <td>${it.label||''}<br><small style="color:#71717a">${prTxt} • ${fmtRem(it.duration_seconds)}</small></td>
       <td>${tierBadge}</td>
       <td><span class="st ${stCls}">${stTxt}</span></td>
       <td>${(it.device_ids||[]).length} / ${it.max_devices}</td>
       <td>
         <button class="btn btn-sm" onclick="copyText('${it.code}')">Copy</button>
+        <button class="btn btn-sm" onclick="copyText(buildShareMsg(itemsByCode['${it.code}']))">Msg</button>
+        <button class="btn btn-sm" onclick="act('${it.code}','${it.allow_4k?'lock4k':'unlock4k'}')">${it.allow_4k?'Lock 4K':'Give 4K'}</button>
         <button class="btn btn-sm" onclick="act('${it.code}','reset')">Reset Dev</button>
         <button class="btn btn-sm" onclick="act('${it.code}','${it.revoked?'unblock':'block'}')">${it.revoked?'Unblock':'Block'}</button>
         <button class="btn btn-sm btn-red" onclick="act('${it.code}','delete')">Del</button>
       </td>
     </tr>`;
   });
+  sr.innerHTML = `<span class="stat-pill">Total Keys: <b>${items.length}</b></span><span class="stat-pill">Active: <b>${cntAct}</b></span><span class="stat-pill">Unused: <b>${cntUn}</b></span><span class="stat-pill">Expired: <b>${cntExp}</b></span>`;
 }
 async function act(code,action){
   await fetch('/api/admin/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,action})});
   loadKeys();
 }
-function copyText(t){ navigator.clipboard.writeText(t); alert('Copied: '+t); }
-function copyRules(){ navigator.clipboard.writeText(document.getElementById('rulesTxt').value); alert('Firestore rules copied!'); }
+let _toastTimer = null;
+function showToast(msg){
+  const el=document.getElementById('toast');
+  if(!el) return;
+  el.textContent=msg;
+  el.style.display='block';
+  clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(()=>{el.style.display='none';},2200);
+}
+function copyText(t){
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(()=>showToast('Copied cleanly!')).catch(()=>_fallbackCopy(t));
+  } else { _fallbackCopy(t); }
+}
+function _fallbackCopy(t){
+  const ta=document.createElement('textarea');
+  ta.value=t; ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); showToast('Copied cleanly!'); }catch(e){}
+  document.body.removeChild(ta);
+}
+function copyRules(){ copyText(document.getElementById('rulesTxt').value); }
 init();
 </script></body></html>"""
 
 class AdminHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass
+    def _no_cache_headers(self):
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
     def _json(self, obj, code=200):
         b = json.dumps(obj).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(b)))
+        self._no_cache_headers()
         self.end_headers()
         self.wfile.write(b)
     def do_GET(self):
         if self.path == "/":
             b = ADMIN_HTML.encode("utf-8")
-            self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+            self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Content-Length", str(len(b))); self._no_cache_headers(); self.end_headers(); self.wfile.write(b)
             return
         if self.path == "/api/admin/init":
             sa = find_service_account_json()
@@ -562,12 +617,21 @@ class AdminHandler(http.server.BaseHTTPRequestHandler):
                     patch_vip_key(code, {"device_ids": {"arrayValue": {"values": []}}, "activated_at": {"nullValue": None}}, ["device_ids", "activated_at"])
                 elif act in ("block", "unblock"):
                     patch_vip_key(code, {"revoked": {"booleanValue": act == "block"}}, ["revoked"])
+                elif act in ("unlock4k", "lock4k"):
+                    patch_vip_key(code, {"allow_4k": {"booleanValue": act == "unlock4k"}}, ["allow_4k"])
                 self._json({"success": True})
                 return
         except Exception as e:
             self._json({"success": False, "error": str(e)}, 400)
             return
         self.send_response(404); self.end_headers()
+
+def _is_port_running(port):
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/admin/init", timeout=1.2) as r:
+            return r.status == 200
+    except Exception:
+        return False
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="StreamHub VIP Admin Key Generator")
@@ -581,6 +645,8 @@ if __name__ == "__main__":
     ap.add_argument("--label", default="", help="Optional key label")
     ap.add_argument("--code", default="", help="Optional custom code")
     ap.add_argument("--list", action="store_true", help="List all VIP keys")
+    ap.add_argument("--port", type=int, default=ADMIN_PORT, help="Local admin panel port")
+    ap.add_argument("--no-browser", action="store_true", help="Do not auto-open browser")
     args = ap.parse_args()
     if args.sa:
         if not _is_valid_sa_json(args.sa):
@@ -594,8 +660,15 @@ if __name__ == "__main__":
         for it in list_vip_keys():
             print(f"{it['code']:22s} | 4K={str(it['allow_4k']):5s} | Rs{str(it['price_inr'] or '-'):4s} | {it['state']:8s} | {len(it['device_ids'])}/{it['max_devices']} | {it['label']}")
         sys.exit(0)
-    print(f"StreamHub VIP Admin Panel -> http://127.0.0.1:{ADMIN_PORT}/")
-    threading.Timer(0.6, lambda: webbrowser.open(f"http://127.0.0.1:{ADMIN_PORT}/")).start()
+    url = f"http://127.0.0.1:{args.port}/"
+    if _is_port_running(args.port):
+        print(f"StreamHub VIP Admin Panel already running -> {url}")
+        if not args.no_browser:
+            webbrowser.open(url)
+        sys.exit(0)
+    print(f"StreamHub VIP Admin Panel -> {url}")
+    if not args.no_browser:
+        threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     socketserver.ThreadingTCPServer.allow_reuse_address = True
-    with socketserver.ThreadingTCPServer(("127.0.0.1", ADMIN_PORT), AdminHandler) as srv:
+    with socketserver.ThreadingTCPServer(("127.0.0.1", args.port), AdminHandler) as srv:
         srv.serve_forever()
