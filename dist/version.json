@@ -1,13 +1,13 @@
 {
-    "version":  "2.5.2",
+    "version":  "2.5.3",
     "download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.0/StreamHub.exe",
     "sha256":  "7723fd9cd24e81c3efbf87c8184fecdbb37191504e6e82c85a7adcd7a5a2250c",
     "size_bytes":  87698023,
-    "apk_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.2/StreamHub.apk",
-    "apk_sha256":  "06d1f62a14200acd4d26e02bd834249262dcadb37e880ad034a2a8396aa9d091",
-    "apk_size_bytes":  78023376,
-    "py_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.2/streamhub_app.py",
-    "py_sha256":  "a4731a286c197c1d37bc173fc9bf00789d33383ff44086756a94c15f0f45cc2d",
-    "min_apk_version_code":  6,
-    "notes":  "v2.5.2 (Android APK Fix): Settings, Profile, Theme, Download \u0026 Storage, My Downloads, and App Updates now open as native opaque document pages (zero transparent/black overlay glitches on any Android WebView), plus LayoutParams MATCH_PARENT fix and Android download notifications."
+    "apk_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.3/StreamHub.apk",
+    "apk_sha256":  "26529919b45dc49c101c667ea00b86dab4cb83fca106743bc6fdaf72886d2c96",
+    "apk_size_bytes":  78030956,
+    "py_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.3/streamhub_app.py",
+    "py_sha256":  "4ff569a0c931920dd6d68480f96e7d7e282461e929d733ad2ab006599c4b01a2",
+    "min_apk_version_code":  7,
+    "notes":  "v2.5.3 (Android APK): Fast up-to-10-connection parallel chunk downloader for 4K/1080p/720p, true Android ForegroundService background downloads with ongoing notification + WifiLock/WakeLock, and top Settings gear icon removed."
 }

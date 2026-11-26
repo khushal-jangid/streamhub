@@ -53,7 +53,7 @@ if sys.platform == 'win32':
     except Exception:
         pass
 
-APP_VERSION = "2.5.2"
+APP_VERSION = "2.5.3"
 DEFAULT_UPDATE_URL = "khushal-jangid/streamhub"
 STREAMHUB_UPDATE_URL = os.environ.get("STREAMHUB_UPDATE_URL", "").strip()
 _ENV_DATA_DIR = os.environ.get("STREAMHUB_DATA_DIR", "").strip()
@@ -5279,12 +5279,6 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 <span class="nav-lbl-hide-sm">Downloads</span>
                 <span class="nav-dl-badge" id="navDownloadsBadge" style="display:none;">0</span>
             </button>
-            <button class="btn-icon-nav" id="btnNavSettings" onclick="openSettingsModal()" title="Settings, Theme, Profile &amp; Updates" aria-label="Open Settings">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                <span id="navProfileAvatar">🎬</span>
-                <span class="nav-lbl-hide-sm">Settings</span>
-                <span id="navSettingsDot" style="display:none;position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:#e50914;box-shadow:0 0 0 2px #0b0e17;"></span>
-            </button>
         </div>
     </div>
 
@@ -5635,7 +5629,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
             <button class="smart-pill" data-sf="imdb7" onclick="toggleSmartFilter('imdb7', this)">⭐ IMDb 7+</button>
             <button class="smart-pill" id="btnSmartClear" onclick="clearSmartFilters()" style="display:none;">✕ Clear</button>
             <button class="smart-pill" id="btnHomeDownloadsPill" onclick="openDownloadsModal()" style="display:inline-flex;align-items:center;gap:5px;">📥 My Downloads <span id="homeDlCountPill">(0)</span></button>
-            <button class="smart-pill" id="btnAppVersionChip" onclick="openSettingsModal()" style="margin-left:auto;" title="Settings, Profile, Themes &amp; Updates">v2.5.1 • Settings</button>
+            <button class="smart-pill" id="btnAppVersionChip" onclick="openSettingsModal()" style="margin-left:auto;" title="Settings, Profile, Themes &amp; Updates">v2.5.3 • Settings</button>
         </div>
         <div class="search-grid" id="searchGrid"></div>
         <div class="load-more-wrap">
@@ -11480,9 +11474,21 @@ def _load_offline_db_unlocked():
             if it.get("status") in ("downloading", "queued") and it["id"] not in _OFFLINE_ACTIVE_WORKERS:
                 it["status"] = "paused"
                 it["speed_bps"] = 0
-                ppath = _offline_item_path(it, part=True)
-                if ppath and os.path.isfile(ppath):
-                    it["downloaded_bytes"] = os.path.getsize(ppath)
+                seg_file = os.path.join(_OFFLINE_DIR, f"{it['id']}.segs.json")
+                if os.path.isfile(seg_file):
+                    try:
+                        with open(seg_file, 'r', encoding='utf-8') as sf:
+                            sd = json.load(sf)
+                        done_cnt = len(sd.get("done") or [])
+                        csz = int(sd.get("chunk_size") or 0)
+                        tot = int(sd.get("total_bytes") or it.get("total_bytes") or 0)
+                        it["downloaded_bytes"] = min(tot, done_cnt * csz) if tot > 0 else (done_cnt * csz)
+                    except Exception:
+                        pass
+                else:
+                    ppath = _offline_item_path(it, part=True)
+                    if ppath and os.path.isfile(ppath):
+                        it["downloaded_bytes"] = os.path.getsize(ppath)
                 changed = True
         if changed:
             _save_offline_db_unlocked(items)
@@ -11633,16 +11639,6 @@ def save_user_settings(body):
 
 def get_offline_storage_summary(prefs_override=None):
     _ensure_offline_dir()
-    used = 0
-    try:
-        for fn in os.listdir(_OFFLINE_DIR):
-            if fn == ".nomedia":
-                continue
-            fp = os.path.join(_OFFLINE_DIR, fn)
-            if os.path.isfile(fp):
-                used += os.path.getsize(fp)
-    except Exception:
-        pass
     if prefs_override is None:
         cfg = _load_app_config()
         dp = cfg.get("download_prefs") if isinstance(cfg.get("download_prefs"), dict) else {}
@@ -11653,6 +11649,7 @@ def get_offline_storage_summary(prefs_override=None):
     else:
         lim_gb = int(prefs_override.get("storage_limit_gb", 4))
     limit_bytes = lim_gb * (1024 ** 3) if lim_gb > 0 else 0
+    used = 0
     active_cnt = 0
     completed_cnt = 0
     paused_cnt = 0
@@ -11661,10 +11658,19 @@ def get_offline_storage_summary(prefs_override=None):
             st = it.get("status")
             if st in ("downloading", "queued"):
                 active_cnt += 1
+                used += int(it.get("downloaded_bytes") or 0)
             elif st == "completed":
                 completed_cnt += 1
+                fp = _offline_item_path(it, part=False)
+                if fp and os.path.isfile(fp):
+                    used += os.path.getsize(fp)
+                else:
+                    used += int(it.get("total_bytes") or it.get("downloaded_bytes") or 0)
             elif st == "paused":
                 paused_cnt += 1
+                used += int(it.get("downloaded_bytes") or 0)
+            else:
+                used += int(it.get("downloaded_bytes") or 0)
     return {
         "used_bytes": used,
         "limit_gb": lim_gb,
@@ -11683,6 +11689,12 @@ def _delete_offline_files_only(entry):
                 os.remove(fp)
             except Exception:
                 pass
+    seg_fp = os.path.join(_OFFLINE_DIR, f"{(entry or {}).get('id', '')}.segs.json")
+    if seg_fp and os.path.isfile(seg_fp):
+        try:
+            os.remove(seg_fp)
+        except Exception:
+            pass
 
 def _cleanup_offline_downloads():
     cfg = _load_app_config()
@@ -11848,10 +11860,23 @@ def _probe_mkv_tracks_from_file(fpath):
     except Exception:
         return []
 
+_OFFLINE_STOP_EVENTS = {}
+
+def _save_offline_segs(seg_path, chunk_size, total_bytes, done_set):
+    try:
+        tmp = seg_path + ".tmp"
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump({"chunk_size": chunk_size, "total_bytes": total_bytes, "done": sorted(done_set)}, f)
+        os.replace(tmp, seg_path)
+    except Exception:
+        pass
+
 def _run_offline_download_worker(dl_id):
+    stop_flag = threading.Event()
     with _OFFLINE_LOCK:
         _OFFLINE_ACTIVE_WORKERS.add(dl_id)
         _OFFLINE_PAUSED_IDS.discard(dl_id)
+        _OFFLINE_STOP_EVENTS[dl_id] = stop_flag
     try:
         entry = _get_offline_entry(dl_id)
         if not entry or dl_id in _OFFLINE_DELETED_IDS:
@@ -11919,8 +11944,8 @@ def _run_offline_download_worker(dl_id):
 
         part_path = _offline_item_path(entry, part=True)
         final_path = _offline_item_path(entry, part=False)
+        seg_path = os.path.join(_OFFLINE_DIR, f"{dl_id}.segs.json")
         _ensure_offline_dir()
-        downloaded = os.path.getsize(part_path) if os.path.isfile(part_path) else 0
 
         sub_sz_int = int(sub_sz) if sub_sz is not None and int(sub_sz) > 0 else 0
         total_bytes = sub_sz_int if sub_sz_int > 0 else int(entry.get("total_bytes") or 0)
@@ -11929,134 +11954,345 @@ def _run_offline_download_worker(dl_id):
         for u in ([seek_url] + [stream_url] + backups):
             if u and '.m3u8' not in u and u not in urls_pool:
                 urls_pool.append(u)
+        range_first = [u for u in urls_pool if is_range_capable(u)]
+        other_urls = [u for u in urls_pool if not is_range_capable(u)]
+        ordered_urls = range_first + other_urls
+        if not ordered_urls:
+            _update_offline_entry(dl_id, {"status": "error", "error": "Download URL available nahi hai"})
+            return
+
+        # Probe Range capability + true content size for fast parallel downloading
+        probe_url = ordered_urls[0]
+        range_supported = False
+        verified_range_urls = []
+        for cand_u in (range_first or ordered_urls):
+            if dl_id in _OFFLINE_DELETED_IDS:
+                _delete_offline_files_only(entry); return
+            if dl_id in _OFFLINE_PAUSED_IDS:
+                _update_offline_entry(dl_id, {"status": "paused", "speed_bps": 0}); return
+            try:
+                p_resp, p_st = open_upstream_range(cand_u, range_hdr=f"bytes={base_off}-{base_off + 1}", hedges=(2, 5, 8), timeout=15)
+                with p_resp:
+                    if p_st == 206:
+                        range_supported = True
+                        verified_range_urls.append(cand_u)
+                        if total_bytes <= 0:
+                            cr = p_resp.headers.get('Content-Range', '')
+                            m_cr = re.search(r'/(\d+)$', cr)
+                            if m_cr:
+                                total_bytes = int(m_cr.group(1))
+                        break
+                    elif p_st == 200 and total_bytes <= 0:
+                        cl = p_resp.headers.get('Content-Length', '')
+                        if cl:
+                            total_bytes = int(cl)
+            except Exception:
+                continue
+
+        if verified_range_urls:
+            for u in range_first:
+                if u not in verified_range_urls:
+                    verified_range_urls.append(u)
 
         cfg = get_user_settings()
         limit_bytes = int(cfg["download_prefs"].get("storage_limit_gb", 4) or 0) * (1024 ** 3)
+        downloaded = int(entry.get("downloaded_bytes") or 0)
         remaining_est = max(0, total_bytes - downloaded) if total_bytes > 0 else _parse_size_to_bytes(entry.get("size_label"))
         ok_cap, _, cap_err = _evict_for_storage(remaining_est, limit_bytes)
         if not ok_cap:
             _update_offline_entry(dl_id, {"status": "error", "error": cap_err, "speed_bps": 0})
             return
+        if total_bytes > 0:
+            _update_offline_entry(dl_id, {"total_bytes": total_bytes})
 
-        url_idx = 0
-        retries = 0
-        last_ui_ts = time.time()
-        speed_ema = 0.0
-        chunk_window_bytes = 0
-        chunk_window_t0 = time.time()
+        # ── Fast Multi-Connection Segmented Parallel Range Mode (up to 10 parallel streams) ──
+        if range_supported and total_bytes >= 2 * 1024 * 1024 and verified_range_urls:
+            if total_bytes >= 256 * 1024 * 1024:
+                chunk_size = 4 * 1024 * 1024
+                max_conns = 10
+            elif total_bytes >= 16 * 1024 * 1024:
+                chunk_size = 2 * 1024 * 1024
+                max_conns = 8
+            else:
+                chunk_size = 512 * 1024
+                max_conns = 6
+            done_set = set()
+            if os.path.isfile(seg_path):
+                try:
+                    with open(seg_path, 'r', encoding='utf-8') as sf:
+                        sd = json.load(sf)
+                    if int(sd.get("chunk_size") or 0) > 0 and int(sd.get("total_bytes") or 0) == total_bytes:
+                        chunk_size = int(sd["chunk_size"])
+                        done_set = set(int(x) for x in (sd.get("done") or []))
+                except Exception:
+                    done_set = set()
+            elif os.path.isfile(part_path):
+                # Migrate any partial sequential download without losing completed chunks
+                old_sz = os.path.getsize(part_path)
+                if 0 < old_sz < total_bytes:
+                    done_set = set(range(old_sz // chunk_size))
 
-        while True:
+            total_segs = (total_bytes + chunk_size - 1) // chunk_size
+            pending_segs = [i for i in range(total_segs) if i not in done_set]
+
+            # Pre-size sparse .part file safely for concurrent random-offset segment writes
+            with open(part_path, 'r+b' if os.path.isfile(part_path) else 'wb') as pf:
+                if os.path.getsize(part_path) < total_bytes:
+                    pf.truncate(total_bytes)
+            _save_offline_segs(seg_path, chunk_size, total_bytes, done_set)
+
+            def _seg_len(sidx):
+                s0 = sidx * chunk_size
+                return min(chunk_size, total_bytes - s0)
+
+            completed_bytes_base = sum(_seg_len(i) for i in done_set if 0 <= i < total_segs)
+            seg_lock = threading.Lock()
+            cursor = [0]
+            inflight_bytes = {}  # {worker_id: int}
+            worker_errors = []
+            n_workers = min(max_conns, max(1, len(pending_segs)))
+
+            def _chunk_worker(wid):
+                while not stop_flag.is_set():
+                    if dl_id in _OFFLINE_DELETED_IDS or dl_id in _OFFLINE_PAUSED_IDS:
+                        stop_flag.set()
+                        return
+                    with seg_lock:
+                        if cursor[0] >= len(pending_segs):
+                            inflight_bytes.pop(wid, None)
+                            return
+                        seg_idx = pending_segs[cursor[0]]
+                        cursor[0] += 1
+                        inflight_bytes[wid] = 0
+
+                    seg_off = seg_idx * chunk_size
+                    seg_len = min(chunk_size, total_bytes - seg_off)
+                    written = 0
+                    seg_ok = False
+                    for attempt in range(7):
+                        if stop_flag.is_set() or dl_id in _OFFLINE_DELETED_IDS or dl_id in _OFFLINE_PAUSED_IDS:
+                            stop_flag.set()
+                            return
+                        u = verified_range_urls[(seg_idx + attempt) % len(verified_range_urls)]
+                        u_start = base_off + seg_off + written
+                        u_end = base_off + seg_off + seg_len - 1
+                        try:
+                            resp, st = open_upstream_range(u, range_hdr=f"bytes={u_start}-{u_end}", hedges=(1, 2, 4), timeout=20)
+                            with resp:
+                                if st != 206 and not (st == 200 and u_start == 0):
+                                    raise RuntimeError(f"HTTP {st}")
+                                with open(part_path, 'r+b', buffering=1048576) as out_f:
+                                    out_f.seek(seg_off + written)
+                                    while written < seg_len:
+                                        if stop_flag.is_set() or dl_id in _OFFLINE_DELETED_IDS or dl_id in _OFFLINE_PAUSED_IDS:
+                                            stop_flag.set()
+                                            return
+                                        buf = resp.read(min(524288, seg_len - written))
+                                        if not buf:
+                                            break
+                                        out_f.write(buf)
+                                        written += len(buf)
+                                        with seg_lock:
+                                            inflight_bytes[wid] = written
+                                    out_f.flush()
+                            if written >= seg_len:
+                                seg_ok = True
+                                break
+                        except Exception as wex:
+                            if attempt == 6:
+                                worker_errors.append(str(wex))
+                            stop_flag.wait(min(2.0, 0.35 * (attempt + 1)))
+
+                    with seg_lock:
+                        inflight_bytes.pop(wid, None)
+                        if seg_ok:
+                            done_set.add(seg_idx)
+                        else:
+                            stop_flag.set()
+                            return
+
+            threads = [threading.Thread(target=_chunk_worker, args=(wi,), daemon=True) for wi in range(n_workers)]
+            for t in threads:
+                t.start()
+
+            prev_tot = completed_bytes_base
+            last_t = time.time()
+            last_seg_save = last_t
+            last_done_cnt = len(done_set)
+            speed_ema = 0.0
+            while any(t.is_alive() for t in threads):
+                if dl_id in _OFFLINE_DELETED_IDS or dl_id in _OFFLINE_PAUSED_IDS:
+                    stop_flag.set()
+                with seg_lock:
+                    cur_done_cnt = len(done_set)
+                    cur_done_bytes = sum(_seg_len(i) for i in done_set if 0 <= i < total_segs) + sum(inflight_bytes.values())
+                now = time.time()
+                dt = max(0.05, now - last_t)
+                delta = max(0, cur_done_bytes - prev_tot)
+                inst_bps = delta / dt
+                speed_ema = inst_bps if speed_ema <= 0 else (speed_ema * 0.55 + inst_bps * 0.45)
+                prev_tot = cur_done_bytes
+                last_t = now
+                downloaded = min(total_bytes, cur_done_bytes)
+                _update_offline_entry(dl_id, {
+                    "downloaded_bytes": downloaded,
+                    "total_bytes": total_bytes,
+                    "speed_bps": int(speed_ema),
+                })
+                if cur_done_cnt > last_done_cnt or (now - last_seg_save >= 1.2):
+                    with seg_lock:
+                        _save_offline_segs(seg_path, chunk_size, total_bytes, done_set)
+                        last_done_cnt = len(done_set)
+                    last_seg_save = now
+                stop_flag.wait(0.35)
+
+            for t in threads:
+                t.join(timeout=2.0)
+
+            _save_offline_segs(seg_path, chunk_size, total_bytes, done_set)
+            downloaded = min(total_bytes, sum(_seg_len(i) for i in done_set if 0 <= i < total_segs))
+
             if dl_id in _OFFLINE_DELETED_IDS:
                 _delete_offline_files_only(entry)
                 return
             if dl_id in _OFFLINE_PAUSED_IDS:
-                _update_offline_entry(dl_id, {"status": "paused", "downloaded_bytes": downloaded, "speed_bps": 0})
+                _update_offline_entry(dl_id, {"status": "paused", "downloaded_bytes": downloaded, "total_bytes": total_bytes, "speed_bps": 0})
                 return
-            if total_bytes > 0 and downloaded >= total_bytes:
-                break
+            if len(done_set) < total_segs:
+                err_msg = worker_errors[-1] if worker_errors else "Connection interrupted"
+                _update_offline_entry(dl_id, {
+                    "status": "error",
+                    "downloaded_bytes": downloaded,
+                    "total_bytes": total_bytes,
+                    "speed_bps": 0,
+                    "error": f"Download ruka ({err_msg}) — Resume dabakar continue karein",
+                })
+                return
+        else:
+            # ── Sequential Fast Buffered Mode (Google CDN / servers without Range) ──
+            downloaded = os.path.getsize(part_path) if os.path.isfile(part_path) else 0
+            url_idx = 0
+            retries = 0
+            last_ui_ts = time.time()
+            speed_ema = 0.0
+            chunk_window_bytes = 0
+            chunk_window_t0 = time.time()
 
-            cur_url = urls_pool[url_idx % len(urls_pool)]
-            req_start = base_off + downloaded
-            if sub_sz_int > 0:
-                req_end = base_off + sub_sz_int - 1
-                rng_hdr = f"bytes={req_start}-{req_end}"
-            else:
-                rng_hdr = f"bytes={req_start}-"
-
-            try:
-                resp, st = open_upstream_range(cur_url, range_hdr=rng_hdr, hedges=(2, 5, 8), timeout=18)
-                with resp:
-                    if st not in (200, 206):
-                        raise RuntimeError(f"HTTP {st}")
-                    if st == 200 and downloaded > 0:
-                        # Upstream ignored Range header; restart cleanly at 0 for direct file
-                        if base_off > 0:
-                            raise RuntimeError("ZIP server rejected byte range")
-                        downloaded = 0
-                        with open(part_path, 'wb'):
-                            pass
-
-                    if total_bytes <= 0:
-                        cr = resp.headers.get('Content-Range', '')
-                        m_cr = re.search(r'/(\d+)$', cr)
-                        if m_cr:
-                            total_bytes = int(m_cr.group(1))
-                        elif resp.headers.get('Content-Length'):
-                            cl = int(resp.headers['Content-Length'])
-                            total_bytes = cl if (st == 200 or downloaded == 0) else (downloaded + cl)
-                        if total_bytes > 0:
-                            ok_cap2, _, cap_err2 = _evict_for_storage(max(0, total_bytes - downloaded), limit_bytes)
-                            if not ok_cap2:
-                                _update_offline_entry(dl_id, {"status": "error", "error": cap_err2, "total_bytes": total_bytes})
-                                return
-                            _update_offline_entry(dl_id, {"total_bytes": total_bytes})
-
-                    mode = 'ab' if (downloaded > 0 and os.path.isfile(part_path)) else 'wb'
-                    with open(part_path, mode) as out_f:
-                        retries = 0
-                        while True:
-                            if dl_id in _OFFLINE_DELETED_IDS:
-                                out_f.close()
-                                _delete_offline_files_only(entry)
-                                return
-                            if dl_id in _OFFLINE_PAUSED_IDS:
-                                out_f.flush()
-                                _update_offline_entry(dl_id, {
-                                    "status": "paused",
-                                    "downloaded_bytes": downloaded,
-                                    "total_bytes": total_bytes,
-                                    "speed_bps": 0,
-                                })
-                                return
-
-                            to_read = 262144
-                            if total_bytes > 0:
-                                left = total_bytes - downloaded
-                                if left <= 0:
-                                    break
-                                to_read = min(to_read, left)
-
-                            buf = resp.read(to_read)
-                            if not buf:
-                                break
-                            out_f.write(buf)
-                            n = len(buf)
-                            downloaded += n
-                            chunk_window_bytes += n
-
-                            now = time.time()
-                            dt_win = now - chunk_window_t0
-                            if dt_win >= 0.45:
-                                inst_bps = chunk_window_bytes / max(0.05, dt_win)
-                                speed_ema = inst_bps if speed_ema <= 0 else (speed_ema * 0.65 + inst_bps * 0.35)
-                                chunk_window_bytes = 0
-                                chunk_window_t0 = now
-                            if now - last_ui_ts >= 0.55:
-                                out_f.flush()
-                                _update_offline_entry(dl_id, {
-                                    "downloaded_bytes": downloaded,
-                                    "total_bytes": total_bytes,
-                                    "speed_bps": int(speed_ema),
-                                })
-                                last_ui_ts = now
-
-                    if total_bytes <= 0 or downloaded >= total_bytes:
-                        break
-                    raise RuntimeError("Premature stream end")
-            except Exception as ex:
-                retries += 1
-                url_idx += 1
-                if retries > 6:
-                    _update_offline_entry(dl_id, {
-                        "status": "error",
-                        "downloaded_bytes": downloaded,
-                        "total_bytes": total_bytes,
-                        "speed_bps": 0,
-                        "error": f"Download ruka ({ex}) — Resume dabakar continue karein",
-                    })
+            while True:
+                if dl_id in _OFFLINE_DELETED_IDS:
+                    _delete_offline_files_only(entry)
                     return
-                time.sleep(min(2.5, 0.4 * retries))
+                if dl_id in _OFFLINE_PAUSED_IDS:
+                    _update_offline_entry(dl_id, {"status": "paused", "downloaded_bytes": downloaded, "speed_bps": 0})
+                    return
+                if total_bytes > 0 and downloaded >= total_bytes:
+                    break
 
+                cur_url = ordered_urls[url_idx % len(ordered_urls)]
+                req_start = base_off + downloaded
+                if sub_sz_int > 0:
+                    rng_hdr = f"bytes={req_start}-{base_off + sub_sz_int - 1}"
+                else:
+                    rng_hdr = f"bytes={req_start}-"
+
+                try:
+                    resp, st = open_upstream_range(cur_url, range_hdr=rng_hdr, hedges=(2, 5, 8), timeout=18)
+                    with resp:
+                        if st not in (200, 206):
+                            raise RuntimeError(f"HTTP {st}")
+                        if st == 200 and downloaded > 0:
+                            if base_off > 0:
+                                raise RuntimeError("ZIP server rejected byte range")
+                            downloaded = 0
+                            with open(part_path, 'wb'):
+                                pass
+
+                        if total_bytes <= 0:
+                            cr = resp.headers.get('Content-Range', '')
+                            m_cr = re.search(r'/(\d+)$', cr)
+                            if m_cr:
+                                total_bytes = int(m_cr.group(1))
+                            elif resp.headers.get('Content-Length'):
+                                cl = int(resp.headers['Content-Length'])
+                                total_bytes = cl if (st == 200 or downloaded == 0) else (downloaded + cl)
+                            if total_bytes > 0:
+                                ok_cap2, _, cap_err2 = _evict_for_storage(max(0, total_bytes - downloaded), limit_bytes)
+                                if not ok_cap2:
+                                    _update_offline_entry(dl_id, {"status": "error", "error": cap_err2, "total_bytes": total_bytes})
+                                    return
+                                _update_offline_entry(dl_id, {"total_bytes": total_bytes})
+
+                        mode = 'ab' if (downloaded > 0 and os.path.isfile(part_path)) else 'wb'
+                        with open(part_path, mode) as out_f:
+                            retries = 0
+                            while True:
+                                if dl_id in _OFFLINE_DELETED_IDS:
+                                    out_f.close()
+                                    _delete_offline_files_only(entry)
+                                    return
+                                if dl_id in _OFFLINE_PAUSED_IDS:
+                                    out_f.flush()
+                                    _update_offline_entry(dl_id, {
+                                        "status": "paused",
+                                        "downloaded_bytes": downloaded,
+                                        "total_bytes": total_bytes,
+                                        "speed_bps": 0,
+                                    })
+                                    return
+
+                                to_read = 1048576
+                                if total_bytes > 0:
+                                    left = total_bytes - downloaded
+                                    if left <= 0:
+                                        break
+                                    to_read = min(to_read, left)
+
+                                buf = resp.read(to_read)
+                                if not buf:
+                                    break
+                                out_f.write(buf)
+                                n = len(buf)
+                                downloaded += n
+                                chunk_window_bytes += n
+
+                                now = time.time()
+                                dt_win = now - chunk_window_t0
+                                if dt_win >= 0.45:
+                                    inst_bps = chunk_window_bytes / max(0.05, dt_win)
+                                    speed_ema = inst_bps if speed_ema <= 0 else (speed_ema * 0.55 + inst_bps * 0.45)
+                                    chunk_window_bytes = 0
+                                    chunk_window_t0 = now
+                                if now - last_ui_ts >= 0.5:
+                                    out_f.flush()
+                                    _update_offline_entry(dl_id, {
+                                        "downloaded_bytes": downloaded,
+                                        "total_bytes": total_bytes,
+                                        "speed_bps": int(speed_ema),
+                                    })
+                                    last_ui_ts = now
+
+                        if total_bytes <= 0 or downloaded >= total_bytes:
+                            break
+                        raise RuntimeError("Premature stream end")
+                except Exception as ex:
+                    retries += 1
+                    url_idx += 1
+                    if retries > 6:
+                        _update_offline_entry(dl_id, {
+                            "status": "error",
+                            "downloaded_bytes": downloaded,
+                            "total_bytes": total_bytes,
+                            "speed_bps": 0,
+                            "error": f"Download ruka ({ex}) — Resume dabakar continue karein",
+                        })
+                        return
+                    time.sleep(min(2.5, 0.4 * retries))
+
+        if os.path.isfile(seg_path):
+            try:
+                os.remove(seg_path)
+            except Exception:
+                pass
         if os.path.isfile(part_path):
             if os.path.isfile(final_path):
                 os.remove(final_path)
@@ -12084,6 +12320,7 @@ def _run_offline_download_worker(dl_id):
     finally:
         with _OFFLINE_LOCK:
             _OFFLINE_ACTIVE_WORKERS.discard(dl_id)
+            _OFFLINE_STOP_EVENTS.pop(dl_id, None)
             _OFFLINE_PAUSED_IDS.discard(dl_id)
             _OFFLINE_DELETED_IDS.discard(dl_id)
 
@@ -12211,8 +12448,17 @@ def handle_offline_download_action(body):
         return {"success": False, "error": "Download id missing"}
 
     if action == "pause":
+        ev = None
         with _OFFLINE_LOCK:
             _OFFLINE_PAUSED_IDS.add(dl_id)
+            ev = _OFFLINE_STOP_EVENTS.get(dl_id)
+        if ev:
+            ev.set()
+        for _ in range(40):
+            if dl_id not in _OFFLINE_ACTIVE_WORKERS:
+                break
+            time.sleep(0.025)
+        with _OFFLINE_LOCK:
             items = _load_offline_db_unlocked()
             for it in items:
                 if it.get("id") == dl_id and it.get("status") in ("downloading", "queued"):
@@ -12225,7 +12471,14 @@ def handle_offline_download_action(body):
         entry = _get_offline_entry(dl_id)
         if not entry:
             return {"success": False, "error": "Download entry not found"}
+        if dl_id in _OFFLINE_ACTIVE_WORKERS and dl_id in _OFFLINE_PAUSED_IDS:
+            for _ in range(80):
+                if dl_id not in _OFFLINE_ACTIVE_WORKERS:
+                    break
+                time.sleep(0.025)
         if dl_id not in _OFFLINE_ACTIVE_WORKERS:
+            with _OFFLINE_LOCK:
+                _OFFLINE_PAUSED_IDS.discard(dl_id)
             _update_offline_entry(dl_id, {"status": "queued", "error": ""})
             threading.Thread(target=_run_offline_download_worker, args=(dl_id,), daemon=True).start()
         return {"success": True, **list_offline_downloads()}
@@ -12236,6 +12489,9 @@ def handle_offline_download_action(body):
                 return {"success": False, "error": "Ye movie abhi chal rahi hai; player band karke delete karein"}
             if dl_id in _OFFLINE_ACTIVE_WORKERS:
                 _OFFLINE_DELETED_IDS.add(dl_id)
+                ev_del = _OFFLINE_STOP_EVENTS.get(dl_id)
+                if ev_del:
+                    ev_del.set()
             items = _load_offline_db_unlocked()
             rem = []
             for it in items:
