@@ -58,7 +58,7 @@ Push-Location $AndroidDir
 $prevEap = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 try {
-    & .\gradlew.bat assembleRelease
+    cmd /c "gradlew.bat assembleRelease"
     if ($LASTEXITCODE -ne 0) { throw "Gradle assembleRelease failed with exit code $LASTEXITCODE" }
 } finally {
     $ErrorActionPreference = $prevEap

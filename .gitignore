@@ -8,9 +8,13 @@ build/vlc_stage/
 build/vlc_runtime.zip
 dist/StreamHub.exe
 
-# Executables — GitHub Release par upload hoti hain
+# Executables & local runtime caches — GitHub Release par upload hoti hain
 StreamHub.exe
 StreamHub.apk
+StreamHub_update.exe
+WebView2/
+vlc/
+ota/
 
 # Logs & temp
 *.log
