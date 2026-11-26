@@ -53,7 +53,7 @@ if sys.platform == 'win32':
     except Exception:
         pass
 
-APP_VERSION = "2.5.3"
+APP_VERSION = "2.5.4"
 DEFAULT_UPDATE_URL = "khushal-jangid/streamhub"
 STREAMHUB_UPDATE_URL = os.environ.get("STREAMHUB_UPDATE_URL", "").strip()
 _ENV_DATA_DIR = os.environ.get("STREAMHUB_DATA_DIR", "").strip()
@@ -3743,106 +3743,96 @@ HTML_PAGE = r"""<!DOCTYPE html>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <style>
 :root {
-    --bg: #05060b;
-    --bg-elevated: #0b0e16;
-    --surface: rgba(15, 18, 28, 0.90);
-    --surface-solid: #0f131f;
-    --surface-2: #161b2c;
-    --surface-hover: #20273f;
-    --border: rgba(255, 255, 255, 0.085);
-    --border-strong: rgba(255, 255, 255, 0.18);
+    --bg: #09090b;
+    --bg-elevated: #101014;
+    --surface: #121216;
+    --surface-solid: #141418;
+    --surface-2: #1c1c22;
+    --surface-hover: #25252d;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.16);
     --netflix: #e50914;
     --netflix-dark: #b20710;
     --prime: #00a8e1;
     --hotstar: #3b82f6;
     --accent: #e50914;
     --accent-hover: #f40612;
-    --vlc: #f97316;
-    --vlc-2: #ea580c;
-    --indigo: #6366f1;
-    --emerald: #10b981;
-    --gold: #fbbf24;
-    --text: #f8fafc;
-    --text-muted: #94a3b8;
-    --radius-lg: 18px;
-    --radius-md: 12px;
-    --radius-sm: 8px;
-    --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.78);
-    --glow-1: rgba(229, 9, 20, 0.14);
-    --glow-2: rgba(0, 168, 225, 0.12);
+    --vlc: #dc2626;
+    --vlc-2: #b91c1c;
+    --indigo: #a1a1aa;
+    --emerald: #22c55e;
+    --gold: #eab308;
+    --cta-fg: #ffffff;
+    --text: #f4f4f5;
+    --text-muted: #a1a1aa;
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
 }
 
 html[data-theme="amoled"] {
     --bg: #000000;
-    --bg-elevated: #050507;
-    --surface: rgba(8, 8, 12, 0.96);
-    --surface-solid: #08080c;
-    --surface-2: #111118;
-    --surface-hover: #1b1b26;
-    --border: rgba(255, 255, 255, 0.09);
-    --glow-1: rgba(229, 9, 20, 0.10);
-    --glow-2: rgba(99, 102, 241, 0.08);
+    --bg-elevated: #060608;
+    --surface: #09090b;
+    --surface-solid: #0b0b0e;
+    --surface-2: #141418;
+    --surface-hover: #1e1e24;
+    --border: rgba(255, 255, 255, 0.08);
 }
 
 html[data-theme="prime"] {
-    --bg: #040914;
-    --bg-elevated: #081224;
-    --surface: rgba(9, 18, 34, 0.92);
-    --surface-solid: #0b162a;
-    --surface-2: #12223d;
-    --surface-hover: #1a3054;
+    --bg: #070b12;
+    --bg-elevated: #0d131f;
+    --surface: #0f1623;
+    --surface-solid: #111927;
+    --surface-2: #182336;
+    --surface-hover: #223048;
     --netflix: #00a8e1;
     --netflix-dark: #0284c7;
     --accent: #00a8e1;
     --accent-hover: #38bdf8;
-    --glow-1: rgba(0, 168, 225, 0.18);
-    --glow-2: rgba(56, 189, 248, 0.12);
 }
 
 html[data-theme="gold"] {
-    --bg: #08070d;
-    --bg-elevated: #110f1b;
-    --surface: rgba(16, 14, 26, 0.92);
-    --surface-solid: #12101e;
-    --surface-2: #1c192d;
-    --surface-hover: #282440;
-    --netflix: #f59e0b;
-    --netflix-dark: #d97706;
-    --accent: #f59e0b;
-    --accent-hover: #fbbf24;
-    --glow-1: rgba(245, 158, 11, 0.16);
-    --glow-2: rgba(168, 85, 247, 0.12);
+    --bg: #0a090b;
+    --bg-elevated: #121115;
+    --surface: #141317;
+    --surface-solid: #17161b;
+    --surface-2: #211f26;
+    --surface-hover: #2b2932;
+    --netflix: #eab308;
+    --netflix-dark: #ca8a04;
+    --accent: #eab308;
+    --accent-hover: #facc15;
+    --cta-fg: #09090b;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; background: var(--bg); }
 body {
     font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background:
-        radial-gradient(ellipse 75% 440px at 18% -90px, var(--glow-1), transparent 70%),
-        radial-gradient(ellipse 65% 400px at 84% -60px, var(--glow-2), transparent 68%),
-        var(--bg);
+    background: var(--bg);
     color: var(--text);
     min-height: 100vh;
     line-height: 1.45;
     padding-bottom: 48px;
     overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
 }
 
 button, input, select, a { font-family: inherit; }
 button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible {
-    outline: 2px solid #fff;
+    outline: 2px solid rgba(255, 255, 255, 0.85);
     outline-offset: 2px;
 }
 
-/* ── Netflix-Inspired Folded "S" Ribbon Intro Splash ─────── */
+/* ── Minimal Brand Intro Splash ───────────────────────────── */
 .intro-splash {
     position: fixed;
     inset: 0;
     z-index: 200;
-    background:
-        radial-gradient(circle at 50% 48%, rgba(229, 9, 20, 0.25) 0%, rgba(120, 5, 12, 0.10) 34%, #05060b 68%),
-        #040509;
+    background: #060608;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -3912,67 +3902,57 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Sticky OTT Glass Navbar ─────────────────────────────── */
+/* ── Sticky Minimal Topbar ───────────────────────────────── */
 .topbar {
     position: sticky;
     top: 0;
     z-index: 60;
-    background: linear-gradient(to bottom, rgba(5, 6, 11, 0.94), rgba(5, 6, 11, 0.76));
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    transition: background 0.25s, border-color 0.25s;
+    background: rgba(9, 9, 11, 0.92);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    transition: background 0.2s, border-color 0.2s;
 }
 .topbar.scrolled {
-    background: rgba(5, 6, 11, 0.96);
-    border-bottom-color: rgba(255, 255, 255, 0.12);
+    background: rgba(9, 9, 11, 0.98);
+    border-bottom-color: var(--border-strong);
 }
 .topbar-inner {
     max-width: 1420px;
     margin: 0 auto;
-    padding: 10px 18px;
+    padding: 9px 18px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 10px;
     min-width: 0;
 }
-.brand-group { display: flex; align-items: center; gap: 12px; flex-shrink: 0; min-width: 0; }
+.brand-group { display: flex; align-items: center; gap: 14px; flex-shrink: 0; min-width: 0; }
 .brand {
     display: inline-flex;
     align-items: center;
-    gap: 9px;
+    gap: 8px;
     text-decoration: none;
     color: var(--text);
     cursor: pointer;
 }
 .brand-s-mark {
-    width: 30px;
-    height: 36px;
+    width: 24px;
+    height: 28px;
     flex-shrink: 0;
-    filter: drop-shadow(0 4px 12px rgba(229, 9, 20, 0.5));
 }
-.brand-name { font-size: 1.15rem; font-weight: 900; letter-spacing: -0.5px; color: #fff; }
-.brand-tag {
-    font-size: 0.62rem;
-    font-weight: 800;
-    padding: 2px 6px;
-    border-radius: 5px;
-    background: rgba(0, 168, 225, 0.18);
-    color: #38bdf8;
-    border: 1px solid rgba(0, 168, 225, 0.4);
-    letter-spacing: 0.6px;
-}
+.brand-name { font-size: 1.08rem; font-weight: 800; letter-spacing: -0.4px; color: #fff; }
+.brand-tag { display: none; }
 
 .top-nav-links { display: flex; align-items: center; gap: 2px; }
 .top-nav-btn {
     border: none;
     background: transparent;
-    color: rgba(248, 250, 252, 0.74);
-    padding: 6px 9px;
-    border-radius: 8px;
+    color: var(--text-muted);
+    padding: 6px 10px;
+    border-radius: 7px;
     font-size: 0.79rem;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
     transition: color 0.16s, background 0.16s;
     white-space: nowrap;
@@ -3984,17 +3964,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     position: relative;
     flex: 1 1 180px;
     min-width: 140px;
-    max-width: 290px;
+    max-width: 300px;
     display: flex;
     align-items: center;
-    background: rgba(22, 27, 44, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 999px;
-    padding: 3px 3px 3px 12px;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 2px 3px 2px 11px;
+    transition: border-color 0.18s;
 }
 .btn-mic {
-    width: 28px; height: 28px; border-radius: 50%; border: none;
+    width: 28px; height: 28px; border-radius: 6px; border: none;
     background: transparent; color: var(--text-muted);
     display: grid; place-items: center; cursor: pointer; flex-shrink: 0;
     margin-right: 2px; transition: color 0.15s, background 0.15s;
@@ -4003,25 +3983,24 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .btn-mic.listening { color: #fff; background: var(--netflix); animation: micPulse 1.1s infinite; }
 @keyframes micPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(229,9,20,0.55); } 50% { box-shadow: 0 0 0 6px rgba(229,9,20,0); } }
 .suggest-dropdown {
-    display: none; position: absolute; top: calc(100% + 8px); left: 0; right: 0;
+    display: none; position: absolute; top: calc(100% + 6px); left: 0; right: 0;
     min-width: 260px; max-width: min(420px, 94vw); max-height: 360px; overflow-y: auto;
-    background: rgba(11, 14, 24, 0.98); backdrop-filter: blur(18px);
-    border: 1px solid rgba(255,255,255,0.14); border-radius: 14px;
-    box-shadow: 0 18px 42px rgba(0,0,0,0.75); z-index: 95; padding: 6px;
+    background: var(--surface-solid);
+    border: 1px solid var(--border-strong); border-radius: 12px;
+    box-shadow: 0 16px 36px rgba(0,0,0,0.75); z-index: 95; padding: 6px;
 }
 .suggest-dropdown.open { display: block; }
 .suggest-item {
     display: flex; align-items: center; gap: 10px; padding: 7px 8px;
-    border-radius: 10px; cursor: pointer; transition: background 0.14s; text-align: left;
+    border-radius: 8px; cursor: pointer; transition: background 0.14s; text-align: left;
 }
-.suggest-item:hover { background: rgba(255,255,255,0.08); }
-.suggest-thumb { width: 34px; height: 50px; border-radius: 6px; object-fit: cover; background: #141826; flex-shrink: 0; }
+.suggest-item:hover { background: rgba(255,255,255,0.06); }
+.suggest-thumb { width: 34px; height: 50px; border-radius: 5px; object-fit: cover; background: var(--surface-2); flex-shrink: 0; }
 .suggest-meta { min-width: 0; flex: 1; }
-.suggest-title { font-size: 0.8rem; font-weight: 700; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.suggest-title { font-size: 0.8rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .suggest-sub { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nav-search:focus-within {
-    border-color: var(--netflix);
-    box-shadow: 0 0 0 3px rgba(229, 9, 20, 0.16);
+    border-color: var(--border-strong);
 }
 .nav-search svg { color: var(--text-muted); flex-shrink: 0; }
 .nav-search input {
@@ -4030,93 +4009,66 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     border: none;
     background: transparent;
     color: var(--text);
-    padding: 7px 9px;
-    font-size: 0.85rem;
+    padding: 7px 8px;
+    font-size: 0.84rem;
     outline: none;
 }
-.nav-search input::placeholder { color: #7c8aa1; }
+.nav-search input::placeholder { color: #71717a; }
 .btn-search-go {
-    background: var(--netflix);
-    color: #fff;
+    background: var(--accent);
+    color: var(--cta-fg);
     border: none;
-    border-radius: 999px;
-    height: 32px;
-    padding: 0 14px;
-    font-size: 0.78rem;
-    font-weight: 800;
+    border-radius: 7px;
+    height: 30px;
+    padding: 0 12px;
+    font-size: 0.76rem;
+    font-weight: 700;
     cursor: pointer;
     flex-shrink: 0;
 }
 .btn-search-go:hover { background: var(--accent-hover); }
 
-.nav-actions { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
+.nav-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .mode-chip {
     display: inline-flex;
     align-items: center;
     gap: 6px;
     font-size: 0.73rem;
-    font-weight: 700;
-    color: #cbd5e1;
-    background: rgba(255, 255, 255, 0.05);
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--surface-2);
     border: 1px solid var(--border);
-    padding: 6px 10px;
-    border-radius: 999px;
+    padding: 5px 10px;
+    border-radius: 8px;
 }
 .dot-live {
-    width: 7px;
-    height: 7px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: var(--emerald);
-    box-shadow: 0 0 8px var(--emerald);
 }
-.btn-qr-nav {
+.btn-qr-nav, .btn-install-nav, .btn-remote-nav {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    height: 36px;
-    padding: 0 11px;
-    border-radius: 9px;
-    background: rgba(0, 168, 225, 0.14);
-    color: #7dd3fc;
-    border: 1px solid rgba(0, 168, 225, 0.36);
-    font-size: 0.78rem;
-    font-weight: 700;
-    cursor: pointer;
-}
-.btn-qr-nav:hover { background: rgba(0, 168, 225, 0.26); }
-.btn-install-nav {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    height: 36px;
+    height: 34px;
     padding: 0 10px;
-    border-radius: 9px;
-    background: rgba(16, 185, 129, 0.14);
-    color: #6ee7b7;
-    border: 1px solid rgba(16, 185, 129, 0.34);
+    border-radius: 8px;
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
     font-size: 0.76rem;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
 }
-.btn-install-nav:hover { background: rgba(16, 185, 129, 0.24); }
-.btn-remote-nav {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    height: 36px;
-    padding: 0 10px;
-    border-radius: 9px;
-    background: rgba(249, 115, 22, 0.14);
-    color: #fdba74;
-    border: 1px solid rgba(249, 115, 22, 0.36);
-    font-size: 0.76rem;
-    font-weight: 700;
-    cursor: pointer;
+.btn-qr-nav:hover, .btn-install-nav:hover, .btn-remote-nav:hover {
+    background: var(--surface-hover);
+    border-color: var(--border-strong);
 }
-.btn-remote-nav:hover { background: rgba(249, 115, 22, 0.24); }
 .mobile-search-bar { display: none; padding: 0 14px 10px; }
 
-/* ── Full-Bleed Netflix/Prime/Hotstar Hero Spotlight ───────── */
+/* ── Minimal Cinema Hero Spotlight ───────────────────────── */
 .hero-stage {
     position: relative;
     max-width: 1420px;
@@ -4125,12 +4077,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 }
 .hero-card {
     position: relative;
-    min-height: 430px;
-    border-radius: 22px;
+    min-height: 410px;
+    border-radius: 16px;
     overflow: hidden;
-    background: #0a0d16;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.85);
+    background: var(--surface);
+    border: 1px solid var(--border);
     display: flex;
     align-items: flex-end;
 }
@@ -4139,22 +4090,21 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     inset: 0;
     background-size: cover;
     background-position: center 22%;
-    filter: blur(2px) saturate(1.18) brightness(0.62);
-    transform: scale(1.06);
+    filter: brightness(0.68) contrast(1.06);
     transition: background-image 0.5s ease, opacity 0.4s ease;
 }
 .hero-scrim {
     position: absolute;
     inset: 0;
     background:
-        linear-gradient(90deg, #05060b 0%, rgba(5, 6, 11, 0.90) 42%, rgba(5, 6, 11, 0.40) 76%, rgba(5, 6, 11, 0.65) 100%),
-        linear-gradient(to top, #05060b 0%, rgba(5, 6, 11, 0.25) 45%, transparent 100%);
+        linear-gradient(90deg, rgba(9,9,11,0.96) 0%, rgba(9,9,11,0.82) 45%, rgba(9,9,11,0.28) 80%, rgba(9,9,11,0.55) 100%),
+        linear-gradient(to top, #09090b 0%, rgba(9,9,11,0.22) 45%, transparent 100%);
 }
 .hero-inner {
     position: relative;
     z-index: 2;
     width: 100%;
-    padding: 36px 42px 34px;
+    padding: 34px 38px 32px;
     display: grid;
     grid-template-columns: minmax(0, 1.35fr) auto;
     gap: 28px;
@@ -4163,109 +4113,106 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .hero-kicker {
     display: inline-flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     flex-wrap: wrap;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 .hero-s-tag {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-size: 0.72rem;
-    font-weight: 900;
-    letter-spacing: 0.18em;
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
-    color: #fff;
+    color: var(--text);
 }
 .prime-check {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    font-size: 0.76rem;
-    font-weight: 800;
-    color: #38bdf8;
-    background: rgba(0, 168, 225, 0.14);
-    border: 1px solid rgba(0, 168, 225, 0.35);
-    padding: 3px 10px;
-    border-radius: 999px;
+    gap: 4px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border);
+    padding: 2px 8px;
+    border-radius: 6px;
 }
 .hotstar-4k {
-    font-size: 0.72rem;
-    font-weight: 800;
-    color: var(--gold);
-    background: rgba(251, 191, 36, 0.14);
-    border: 1px solid rgba(251, 191, 36, 0.35);
-    padding: 3px 9px;
-    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid var(--border);
+    padding: 2px 8px;
+    border-radius: 6px;
 }
 .hero-title {
-    font-size: clamp(1.65rem, 3.4vw, 2.95rem);
-    font-weight: 900;
+    font-size: clamp(1.55rem, 3.2vw, 2.7rem);
+    font-weight: 800;
     line-height: 1.12;
     letter-spacing: -0.025em;
     color: #fff;
-    text-shadow: 0 6px 28px rgba(0, 0, 0, 0.75);
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     max-width: 720px;
 }
 .hero-meta-row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 9px;
     flex-wrap: wrap;
-    font-size: 0.84rem;
-    color: #cbd5e1;
-    font-weight: 600;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    font-weight: 500;
     margin-bottom: 18px;
 }
-.hero-meta-dot { width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,0.4); }
-.hero-actions { display: flex; align-items: center; gap: 11px; flex-wrap: wrap; }
+.hero-meta-dot { width: 3px; height: 3px; border-radius: 50%; background: rgba(255,255,255,0.35); }
+.hero-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .btn-nf-play {
     display: inline-flex;
     align-items: center;
-    gap: 9px;
-    height: 46px;
-    padding: 0 24px;
-    border-radius: 10px;
-    border: none;
-    background: #fff;
-    color: #07080d;
-    font-size: 0.95rem;
-    font-weight: 900;
-    cursor: pointer;
-    box-shadow: 0 10px 30px rgba(255, 255, 255, 0.18);
-    transition: transform 0.15s, background 0.15s;
-}
-.btn-nf-play:hover { background: #e2e8f0; transform: scale(1.03); }
-.btn-nf-glass {
-    display: inline-flex;
-    align-items: center;
     gap: 8px;
-    height: 46px;
-    padding: 0 18px;
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.14);
-    backdrop-filter: blur(12px);
-    color: #fff;
-    border: 1px solid rgba(255, 255, 255, 0.22);
-    font-size: 0.88rem;
+    height: 44px;
+    padding: 0 22px;
+    border-radius: 8px;
+    border: none;
+    background: #ffffff;
+    color: #09090b;
+    font-size: 0.92rem;
     font-weight: 700;
     cursor: pointer;
     transition: background 0.15s;
 }
-.btn-nf-glass:hover { background: rgba(255, 255, 255, 0.24); }
+.btn-nf-play:hover { background: #e4e4e7; }
+.btn-nf-glass {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 44px;
+    padding: 0 16px;
+    border-radius: 8px;
+    background: rgba(24, 24, 27, 0.78);
+    color: #f4f4f5;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    font-size: 0.86rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.btn-nf-glass:hover { background: rgba(39, 39, 42, 0.92); border-color: rgba(255,255,255,0.28); }
 
 .hero-poster-frame {
-    width: 196px;
+    width: 186px;
     aspect-ratio: 2/3;
-    border-radius: 14px;
+    border-radius: 10px;
     overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.22);
-    box-shadow: 0 22px 50px rgba(0, 0, 0, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.72);
     cursor: pointer;
-    transition: transform 0.25s;
+    transition: transform 0.2s;
 }
-.hero-poster-frame:hover { transform: scale(1.04); }
+.hero-poster-frame:hover { transform: translateY(-2px); }
 .hero-poster-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .hero-nav-arrow {
@@ -4273,62 +4220,60 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     top: 50%;
     transform: translateY(-50%);
     z-index: 4;
-    width: 40px;
-    height: 54px;
-    border-radius: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    background: rgba(5, 6, 11, 0.56);
+    width: 36px;
+    height: 48px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: rgba(9, 9, 11, 0.72);
     color: #fff;
     display: grid;
     place-items: center;
     cursor: pointer;
-    opacity: 0.55;
+    opacity: 0;
     transition: opacity 0.18s, background 0.18s;
 }
 .hero-card:hover .hero-nav-arrow { opacity: 1; }
-.hero-nav-arrow:hover { background: rgba(229, 9, 20, 0.82); }
+.hero-nav-arrow:hover { background: var(--accent); }
 .hero-prev { left: 12px; }
 .hero-next { right: 12px; }
 .hero-dots {
     position: absolute;
     bottom: 14px;
-    right: 26px;
+    right: 24px;
     z-index: 4;
     display: flex;
-    gap: 7px;
+    gap: 6px;
 }
 .hero-dot {
-    width: 22px;
-    height: 4px;
+    width: 16px;
+    height: 3px;
     border-radius: 99px;
     border: none;
-    background: rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.26);
     cursor: pointer;
     transition: width 0.2s, background 0.2s;
 }
-.hero-dot.active { width: 34px; background: var(--netflix); }
+.hero-dot.active { width: 28px; background: var(--accent); }
 
 /* ── Main App Shell Container ────────────────────────────── */
 .app-shell {
     max-width: 1420px;
     margin: 0 auto;
-    padding: 18px 20px 28px;
+    padding: 16px 20px 28px;
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 22px;
 }
 
 .glass-card {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    padding: 20px;
-    box-shadow: var(--shadow-lg);
-    backdrop-filter: blur(12px);
+    padding: 18px;
     scroll-margin-top: 80px;
 }
 
-/* ── Compact OTT Utility Bar (Link Streamer + Phone QR) ──── */
+/* ── Compact Utility Bar (Link Resolver + Phone QR) ──────── */
 .command-grid {
     display: grid;
     grid-template-columns: minmax(0, 1.85fr) minmax(290px, 0.9fr);
@@ -4340,9 +4285,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     flex-direction: column;
     justify-content: center;
     padding: 16px 18px;
-    background:
-        radial-gradient(circle at 12% 15%, rgba(229, 9, 20, 0.12), transparent 55%),
-        var(--surface);
+    background: var(--surface);
 }
 .section-eyebrow {
     display: flex;
@@ -4419,17 +4362,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     padding: 0 20px;
     border-radius: var(--radius-md);
     border: none;
-    background: linear-gradient(135deg, var(--netflix), var(--netflix-dark));
-    color: #fff;
-    font-size: 0.88rem;
-    font-weight: 800;
+    background: var(--netflix);
+    color: var(--cta-fg);
+    font-size: 0.86rem;
+    font-weight: 700;
     cursor: pointer;
     flex-shrink: 0;
-    box-shadow: 0 8px 24px rgba(229, 9, 20, 0.34);
-    transition: transform 0.14s, opacity 0.18s;
+    transition: background 0.15s, opacity 0.18s;
 }
-.btn-primary:hover { opacity: 0.94; transform: translateY(-1px); }
-.btn-primary:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .status-bar {
     display: none;
@@ -4437,11 +4379,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     gap: 10px;
     margin-top: 10px;
     padding: 9px 13px;
-    border-radius: 10px;
-    background: rgba(0, 168, 225, 0.10);
-    border: 1px solid rgba(0, 168, 225, 0.3);
-    font-size: 0.84rem;
-    color: #bae6fd;
+    border-radius: 8px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    font-size: 0.82rem;
+    color: var(--text);
 }
 .spinner {
     width: 16px; height: 16px;
@@ -4453,12 +4395,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 .error-box {
-    background: rgba(239, 68, 68, 0.12);
-    border: 1px solid rgba(239, 68, 68, 0.38);
-    border-radius: 10px;
+    background: rgba(239, 68, 68, 0.10);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    border-radius: 8px;
     padding: 10px 14px;
     margin-top: 10px;
-    font-size: 0.84rem;
+    font-size: 0.82rem;
     color: #fca5a5;
 }
 
@@ -4466,29 +4408,26 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     display: flex;
     align-items: center;
     padding: 14px 16px;
-    background:
-        radial-gradient(circle at 90% 20%, rgba(0, 168, 225, 0.16), transparent 60%),
-        var(--surface);
-    border: 1px solid rgba(0, 168, 225, 0.32);
+    background: var(--surface);
+    border: 1px solid var(--border);
 }
 #phoneQrExpanded { display: flex; align-items: center; gap: 14px; width: 100%; }
 .qr-thumb-btn {
     width: 82px; height: 82px; min-width: 82px;
-    background: #fff; padding: 5px; border-radius: 11px; border: none; cursor: pointer;
-    box-shadow: 0 8px 22px rgba(0,0,0,0.5);
+    background: #fff; padding: 5px; border-radius: 10px; border: none; cursor: pointer;
 }
 .qr-thumb-btn img { width: 100%; height: 100%; display: block; border-radius: 5px; }
 .qr-card-meta { flex: 1; min-width: 0; }
-.qr-card-title { font-size: 0.88rem; font-weight: 800; color: #bae6fd; margin-bottom: 4px; }
+.qr-card-title { font-size: 0.86rem; font-weight: 700; color: var(--text); margin-bottom: 4px; }
 .qr-url-pill {
     display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    background: #070910; border: 1px solid var(--border); color: #7dd3fc;
-    font-family: ui-monospace, Consolas, monospace; font-size: 0.75rem; font-weight: 700;
-    padding: 4px 8px; border-radius: 7px; margin-bottom: 7px;
+    background: var(--bg); border: 1px solid var(--border); color: var(--text-muted);
+    font-family: ui-monospace, Consolas, monospace; font-size: 0.74rem; font-weight: 600;
+    padding: 4px 8px; border-radius: 6px; margin-bottom: 7px;
 }
 .qr-btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
 
-/* ── Horizontal JioHotstar / Netflix Poster Rails ────────── */
+/* ── Horizontal Cinema Poster Rails ─────────────────────── */
 .ott-rails-wrap { display: flex; flex-direction: column; gap: 22px; }
 .ott-rail { position: relative; }
 .rail-head {
@@ -4496,30 +4435,30 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    margin-bottom: 11px;
+    margin-bottom: 10px;
     padding: 0 2px;
 }
-.rail-title-wrap { display: flex; align-items: center; gap: 9px; }
-.rail-accent-bar { width: 4px; height: 19px; border-radius: 4px; background: var(--netflix); }
+.rail-title-wrap { display: flex; align-items: center; gap: 8px; }
+.rail-accent-bar { width: 3px; height: 16px; border-radius: 2px; background: var(--netflix); }
 .rail-accent-prime { background: var(--prime); }
 .rail-accent-hotstar { background: var(--gold); }
-.rail-title { font-size: 1.06rem; font-weight: 900; letter-spacing: -0.25px; color: #fff; }
+.rail-title { font-size: 1.02rem; font-weight: 700; letter-spacing: -0.2px; color: #fff; }
 .rail-explore-btn {
     border: none;
     background: transparent;
-    color: #38bdf8;
-    font-size: 0.8rem;
-    font-weight: 800;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    font-weight: 600;
     cursor: pointer;
     padding: 4px 8px;
-    border-radius: 7px;
+    border-radius: 6px;
 }
-.rail-explore-btn:hover { background: rgba(56, 189, 248, 0.12); }
+.rail-explore-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
 
 .rail-track-wrap { position: relative; }
 .rail-row {
     display: flex;
-    gap: 13px;
+    gap: 12px;
     overflow-x: auto;
     scroll-behavior: smooth;
     padding: 4px 2px 10px;
@@ -4527,21 +4466,20 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 }
 .rail-row::-webkit-scrollbar { display: none; }
 .rail-card {
-    flex: 0 0 162px;
-    background: #0b0e17;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 12px;
+    flex: 0 0 158px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
     overflow: hidden;
     cursor: pointer;
     position: relative;
-    transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s, box-shadow 0.22s;
+    transition: transform 0.18s ease, border-color 0.18s;
     display: flex;
     flex-direction: column;
 }
 .rail-card:hover {
-    transform: translateY(-4px) scale(1.03);
-    border-color: rgba(229, 9, 20, 0.65);
-    box-shadow: 0 18px 38px rgba(0, 0, 0, 0.82);
+    transform: translateY(-2px);
+    border-color: var(--border-strong);
     z-index: 3;
 }
 .rail-arrow {
@@ -4549,12 +4487,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     top: 38%;
     transform: translateY(-50%);
     z-index: 5;
-    width: 36px;
-    height: 64px;
-    border-radius: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    background: rgba(5, 6, 11, 0.78);
-    backdrop-filter: blur(8px);
+    width: 34px;
+    height: 56px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: rgba(9, 9, 11, 0.85);
     color: #fff;
     display: grid;
     place-items: center;
@@ -4575,12 +4512,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    background: rgba(5, 6, 11, 0.78);
-    backdrop-filter: blur(6px);
-    border: 1px solid rgba(0, 168, 225, 0.4);
-    color: #38bdf8;
+    background: rgba(9, 9, 11, 0.85);
+    border: 1px solid var(--border);
+    color: var(--text);
     font-size: 0.62rem;
-    font-weight: 800;
+    font-weight: 700;
     padding: 2px 6px;
     border-radius: 5px;
 }
@@ -4588,14 +4524,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 /* ── Small Buttons & Details Theater ─────────────────────── */
 .btn-sm {
     display: inline-flex; align-items: center; justify-content: center; gap: 5px;
-    min-height: 34px; padding: 6px 11px; border-radius: 8px;
-    font-size: 0.76rem; font-weight: 700; border: none; cursor: pointer; text-decoration: none;
+    min-height: 34px; padding: 6px 11px; border-radius: 7px;
+    font-size: 0.75rem; font-weight: 600; border: none; cursor: pointer; text-decoration: none;
+    transition: background 0.15s, border-color 0.15s, opacity 0.15s;
 }
 .btn-accent-sm { background: var(--vlc-2); color: #fff; }
-.btn-vlc-sm { background: linear-gradient(135deg, var(--vlc), var(--netflix)); color: #fff; }
-.btn-indigo-sm { background: rgba(0, 168, 225, 0.18); color: #bae6fd; border: 1px solid rgba(0, 168, 225, 0.4); }
-.btn-copy-sm { background: var(--surface-2); color: #e2e8f0; border: 1px solid var(--border); }
-.btn-copy-sm:hover { background: var(--surface-hover); }
+.btn-vlc-sm { background: var(--accent); color: var(--cta-fg); }
+.btn-vlc-sm:hover { background: var(--accent-hover); }
+.btn-indigo-sm { background: var(--surface-2); color: var(--text); border: 1px solid var(--border-strong); }
+.btn-indigo-sm:hover { background: var(--surface-hover); }
+.btn-copy-sm { background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); }
+.btn-copy-sm:hover { background: var(--surface-hover); color: #fff; }
 
 .details-layout { display: flex; gap: 20px; align-items: flex-start; }
 .detail-poster {
@@ -4652,29 +4591,29 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .badge-green { background: rgba(16, 185, 129, 0.14); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.35); }
 
 .vlc-banner {
-    width: 100%; min-height: 52px; padding: 14px 18px; border-radius: 12px; border: none;
-    background: linear-gradient(135deg, var(--netflix), var(--vlc)); color: #fff;
-    font-size: 1rem; font-weight: 800; cursor: pointer;
-    display: flex; align-items: center; justify-content: center; gap: 10px;
-    box-shadow: 0 12px 30px rgba(229, 9, 20, 0.35);
+    width: 100%; min-height: 48px; padding: 12px 18px; border-radius: 10px; border: none;
+    background: var(--netflix); color: var(--cta-fg);
+    font-size: 0.94rem; font-weight: 700; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 9px;
+    transition: background 0.15s;
 }
-.vlc-banner:hover { opacity: 0.94; transform: translateY(-1px); }
+.vlc-banner:hover { background: var(--accent-hover); }
 .action-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
 .action-grid .btn-action { flex: 1 1 155px; }
 .btn-action {
     display: inline-flex; align-items: center; justify-content: center; gap: 7px;
-    min-height: 44px; padding: 10px 12px; border-radius: 11px;
-    background: var(--surface-2); color: #e2e8f0; border: 1px solid var(--border);
-    font-size: 0.84rem; font-weight: 700; text-decoration: none; cursor: pointer;
+    min-height: 44px; padding: 10px 12px; border-radius: 10px;
+    background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
+    font-size: 0.82rem; font-weight: 600; text-decoration: none; cursor: pointer;
 }
 .btn-action:hover { background: var(--surface-hover); border-color: var(--border-strong); }
-.btn-action-web { background: rgba(0, 168, 225, 0.16); color: #bae6fd; border-color: rgba(0, 168, 225, 0.38); }
+.btn-action-web { background: var(--surface-2); color: var(--text); border-color: var(--border-strong); }
 
 .movie-qr-box {
     display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px;
-    padding: 18px 16px; border-radius: 16px;
-    background: linear-gradient(160deg, rgba(0, 168, 225, 0.12), rgba(11, 14, 22, 0.96));
-    border: 1px solid rgba(0, 168, 225, 0.34);
+    padding: 18px 16px; border-radius: 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
 }
 .qr-frame-lg { width: 156px; height: 156px; background: #fff; padding: 8px; border-radius: 14px; box-shadow: 0 10px 28px rgba(0,0,0,0.55); }
 .qr-frame-lg img { width: 100%; height: 100%; display: block; border-radius: 6px; }
@@ -4717,45 +4656,44 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .filter-btn.active { background: var(--netflix); color: #fff; }
 .filter-btn:not(.active):hover { color: #fff; }
 
-.search-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 15px; }
+.search-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 14px; }
 .movie-card {
-    position: relative; background: var(--surface-solid); border: 1px solid var(--border);
-    border-radius: 12px; overflow: hidden; cursor: pointer;
-    transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s, box-shadow 0.2s;
+    position: relative; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; cursor: pointer;
+    transition: transform 0.18s ease, border-color 0.18s;
     display: flex; flex-direction: column;
 }
-.movie-card:hover { transform: translateY(-4px) scale(1.02); border-color: rgba(229, 9, 20, 0.6); box-shadow: 0 18px 38px rgba(0, 0, 0, 0.75); }
-.poster-wrap { position: relative; width: 100%; aspect-ratio: 2/3; background: linear-gradient(135deg, #131724, #1c2236); overflow: hidden; }
-.poster-wrap img { position: relative; z-index: 0; width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s ease; }
-.movie-card:hover .poster-wrap img, .rail-card:hover .poster-wrap img { transform: scale(1.05); }
+.movie-card:hover { transform: translateY(-2px); border-color: var(--border-strong); }
+.poster-wrap { position: relative; width: 100%; aspect-ratio: 2/3; background: var(--surface-2); overflow: hidden; }
+.poster-wrap img { position: relative; z-index: 0; width: 100%; height: 100%; object-fit: cover; display: block; transition: opacity 0.2s ease; }
 .poster-shade {
     position: absolute; inset: 0; z-index: 1;
-    background: linear-gradient(to top, rgba(5,6,11,0.94) 0%, rgba(5,6,11,0.16) 46%, rgba(5,6,11,0.32) 100%);
+    background: linear-gradient(to top, rgba(9,9,11,0.92) 0%, rgba(9,9,11,0.12) 45%, rgba(9,9,11,0.22) 100%);
     pointer-events: none;
 }
 .card-tag-left, .card-tag-right {
-    position: absolute; top: 8px; z-index: 3; font-size: 0.64rem; font-weight: 800; padding: 3px 7px; border-radius: 6px; backdrop-filter: blur(8px);
-    display: inline-flex; align-items: center; gap: 4px; line-height: 1.1; pointer-events: none;
+    position: absolute; top: 7px; z-index: 3; font-size: 0.62rem; font-weight: 700; padding: 2px 6px; border-radius: 5px;
+    display: inline-flex; align-items: center; gap: 3px; line-height: 1.15; pointer-events: none;
 }
-.card-tag-left { left: 8px; background: rgba(5,6,11,0.78); color: var(--gold); border: 1px solid rgba(251,191,36,0.35); }
-.card-tag-right { right: 8px; background: rgba(229,9,20,0.92); color: #fff; }
+.card-tag-left { left: 7px; background: rgba(9,9,11,0.82); color: var(--text); border: 1px solid rgba(255,255,255,0.14); }
+.card-tag-right { right: 7px; background: var(--netflix); color: #fff; }
 .hover-play {
-    position: absolute; inset: 0; margin: auto; width: 46px; height: 46px; border-radius: 50%;
-    background: rgba(255, 255, 255, 0.94); color: #05060b; display: grid; place-items: center;
-    opacity: 0; transform: scale(0.84); transition: opacity 0.2s, transform 0.2s;
-    box-shadow: 0 8px 26px rgba(0,0,0,0.55); pointer-events: none;
+    position: absolute; inset: 0; margin: auto; width: 42px; height: 42px; border-radius: 50%;
+    background: rgba(255, 255, 255, 0.94); color: #09090b; display: grid; place-items: center;
+    opacity: 0; transform: scale(0.9); transition: opacity 0.18s, transform 0.18s;
+    pointer-events: none;
 }
 .movie-card:hover .hover-play, .rail-card:hover .hover-play { opacity: 1; transform: scale(1); }
-.movie-card-info { padding: 10px 11px 11px; flex: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 5px; }
+.movie-card-info { padding: 9px 10px 10px; flex: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 4px; }
 .movie-card-title {
-    font-size: 0.84rem; font-weight: 700; line-height: 1.3; color: var(--text);
+    font-size: 0.82rem; font-weight: 600; line-height: 1.3; color: var(--text);
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-.movie-card-sub { font-size: 0.7rem; font-weight: 600; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.movie-card-sub { font-size: 0.69rem; font-weight: 500; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* ── Modals & Toasts & Library ───────────────────────────── */
+/* ── Modals & Full-Page Views ────────────────────────────── */
 .modal-overlay {
-    position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 95; background: rgba(3, 5, 11, 0.92);
+    position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 95; background: rgba(0, 0, 0, 0.84);
     display: none; align-items: center; justify-content: center; padding: 16px;
 }
 .sh-view-hidden { display: none !important; }
@@ -4766,7 +4704,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     z-index: 10 !important;
     width: 100% !important;
     min-height: 100vh;
-    background: #080b14 !important;
+    background: var(--bg) !important;
     padding: 0 0 32px !important;
 }
 .modal-overlay.sh-full-page.open { display: none !important; }
@@ -4779,7 +4717,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     margin: 0 auto !important;
     display: block !important;
     overflow: visible !important;
-    background: #0b0f1c !important;
+    background: var(--bg) !important;
     border: none !important;
     border-radius: 0 !important;
     box-shadow: none !important;
@@ -4787,9 +4725,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .modal-overlay.sh-full-page .settings-head {
     display: flex !important;
     position: relative !important;
-    background: #111626 !important;
-    padding: 15px 16px !important;
-    border-bottom: 1px solid rgba(255,255,255,0.12) !important;
+    background: var(--bg-elevated) !important;
+    padding: 14px 16px !important;
+    border-bottom: 1px solid var(--border) !important;
 }
 .modal-overlay.sh-full-page .settings-body {
     display: flex !important;
@@ -4797,146 +4735,177 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     overflow: visible !important;
     height: auto !important;
     min-height: 75vh !important;
-    background: #090d16 !important;
+    background: var(--bg) !important;
     padding: 16px 14px 44px !important;
 }
 .modal-overlay.open { display: flex; }
 .modal-dialog {
     width: 100%; max-width: 440px; max-height: 92vh; overflow-y: auto;
-    background: #0f131f; border: 1px solid var(--border-strong); color: var(--text, #f8fafc);
-    border-radius: 22px; padding: 24px 20px; text-align: center; box-shadow: 0 30px 80px rgba(0,0,0,0.85);
+    background: var(--surface-solid); border: 1px solid var(--border-strong); color: var(--text);
+    border-radius: 16px; padding: 22px 20px; text-align: center; box-shadow: 0 24px 64px rgba(0,0,0,0.85);
 }
-.modal-qr-frame { width: 220px; height: 220px; margin: 14px auto; background: #fff; padding: 10px; border-radius: 16px; }
-.modal-qr-frame img { width: 100%; height: 100%; display: block; border-radius: 8px; }
+.modal-qr-frame { width: 220px; height: 220px; margin: 14px auto; background: #fff; padding: 10px; border-radius: 14px; }
+.modal-qr-frame img { width: 100%; height: 100%; display: block; border-radius: 6px; }
 .modal-steps {
     text-align: left; background: rgba(255,255,255,0.03); border: 1px solid var(--border);
-    border-radius: 12px; padding: 12px 14px; font-size: 0.8rem; color: var(--text-muted); line-height: 1.55; margin-top: 14px;
+    border-radius: 10px; padding: 12px 14px; font-size: 0.8rem; color: var(--text-muted); line-height: 1.55; margin-top: 14px;
 }
 .modal-steps b { color: var(--text); }
 
-/* ── Dedicated Settings Page & Offline Downloads UI ─────── */
+/* ── Dedicated Settings, Startup Popup & Offline UI ──────── */
 .settings-dialog {
     width: 100%; max-width: 700px; height: min(92vh, 880px); max-height: 92dvh;
     display: flex; flex-direction: column; overflow: hidden;
-    background: #0c101c; background: var(--bg-elevated, #0c101c); color: #f8fafc;
-    border: 1px solid rgba(255,255,255,0.16); border-radius: 22px; text-align: left;
+    background: var(--bg-elevated); color: var(--text);
+    border: 1px solid var(--border-strong); border-radius: 16px; text-align: left;
     box-shadow: 0 24px 64px rgba(0,0,0,0.88);
 }
 .settings-head {
     flex-shrink: 0;
-    background: #111626; background: var(--surface-solid, #111626);
-    padding: 15px 18px; border-bottom: 1px solid rgba(255,255,255,0.10);
+    background: var(--surface-solid);
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
 }
 .settings-body {
     flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    padding: 16px 18px 28px; display: flex; flex-direction: column; gap: 14px;
-    background: #0a0e18; background: var(--bg-elevated, #0a0e18);
+    padding: 16px 18px 28px; display: flex; flex-direction: column; gap: 12px;
+    background: var(--bg);
 }
 .settings-card {
     flex-shrink: 0;
-    background: #121728; background: var(--surface-solid, #121728);
-    border: 1px solid rgba(255,255,255,0.10);
-    border-radius: 16px; padding: 15px 16px; color: #f8fafc;
+    background: var(--surface-solid);
+    border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 15px; color: var(--text);
 }
 .settings-card-title {
-    font-size: 0.86rem; font-weight: 800; color: #ffffff;
-    display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px;
+    font-size: 0.85rem; font-weight: 700; color: var(--text);
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 11px;
 }
 .settings-menu-item {
     flex-shrink: 0; width: 100%;
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    padding: 14px 15px; border-radius: 16px;
-    background: #121728; background: var(--surface-solid, #121728);
-    border: 1px solid rgba(255,255,255,0.10); color: #f8fafc;
-    cursor: pointer; text-align: left; transition: transform 0.14s, border-color 0.16s, background 0.16s;
+    padding: 13px 14px; border-radius: 12px;
+    background: var(--surface-solid);
+    border: 1px solid var(--border); color: var(--text);
+    cursor: pointer; text-align: left; transition: border-color 0.15s, background 0.15s;
 }
 .settings-menu-item:hover, .settings-menu-item:active {
-    border-color: var(--accent, #e50914); background: #171e34;
+    border-color: var(--border-strong); background: var(--surface-2);
+}
+.settings-menu-item.highlight {
+    border-color: rgba(255, 255, 255, 0.16);
 }
 .settings-menu-left { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
 .settings-menu-ico {
-    width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0;
-    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.10);
-    display: grid; place-items: center; font-size: 1.18rem;
+    width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
+    background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text); display: grid; place-items: center;
 }
-.settings-menu-title { font-size: 0.92rem; font-weight: 800; color: #ffffff; line-height: 1.25; }
-.settings-menu-sub { font-size: 0.74rem; color: #94a3b8; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.settings-menu-chev { font-size: 1.25rem; font-weight: 900; color: #94a3b8; flex-shrink: 0; }
+.settings-menu-title { font-size: 0.9rem; font-weight: 700; color: var(--text); line-height: 1.25; }
+.settings-menu-sub { font-size: 0.73rem; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.settings-menu-chev { color: var(--text-muted); flex-shrink: 0; display: grid; place-items: center; }
 .settings-row {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    padding: 10px 0; border-top: 1px solid rgba(255,255,255,0.06); flex-wrap: wrap;
+    padding: 10px 0; border-top: 1px solid var(--border); flex-wrap: wrap;
 }
 .settings-row:first-of-type { border-top: none; padding-top: 0; }
-.settings-label { font-size: 0.82rem; font-weight: 700; color: #f8fafc; }
-.settings-sub { font-size: 0.72rem; color: #94a3b8; margin-top: 2px; line-height: 1.35; }
+.settings-label { font-size: 0.82rem; font-weight: 600; color: var(--text); }
+.settings-sub { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; line-height: 1.35; }
 .avatar-grid { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 .avatar-chip {
-    width: 40px; height: 40px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);
-    background: #1a2033; font-size: 1.25rem; cursor: pointer; display: grid; place-items: center;
-    transition: transform 0.14s, border-color 0.14s, background 0.14s;
+    width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--surface-2); color: var(--text-muted); cursor: pointer; display: grid; place-items: center;
+    transition: border-color 0.14s, background 0.14s, color 0.14s;
 }
-.avatar-chip.active { border-color: var(--accent, #e50914); background: rgba(229,9,20,0.22); transform: scale(1.06); }
+.avatar-chip.active { border-color: var(--accent); background: rgba(229,9,20,0.16); color: #fff; }
 .theme-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(136px, 1fr)); gap: 10px; }
 .theme-card {
-    background: #171e31; border: 1.5px solid rgba(255,255,255,0.10); border-radius: 13px;
-    padding: 11px 12px; cursor: pointer; text-align: left; color: #f8fafc; transition: border-color 0.16s, transform 0.14s;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 11px 12px; cursor: pointer; text-align: left; color: var(--text); transition: border-color 0.16s;
 }
-.theme-card:hover { border-color: rgba(255,255,255,0.28); }
-.theme-card.active { border-color: var(--accent, #e50914); box-shadow: 0 0 0 1px var(--accent, #e50914); transform: translateY(-1px); }
+.theme-card:hover { border-color: var(--border-strong); }
+.theme-card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .theme-dots { display: flex; gap: 6px; margin-bottom: 7px; }
-.theme-dot { width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.22); }
-.theme-name { font-size: 0.8rem; font-weight: 800; color: #ffffff; }
-.theme-desc { font-size: 0.69rem; color: #94a3b8; margin-top: 2px; }
-.update-entry-card {
-    flex-shrink: 0;
-    display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;
-    background: linear-gradient(135deg, rgba(99,102,241,0.24), rgba(229,9,20,0.16));
-    border: 1px solid rgba(99,102,241,0.52); border-radius: 15px; padding: 14px 16px;
-    cursor: pointer; text-align: left; color: #ffffff; transition: transform 0.14s, border-color 0.16s;
-}
-.update-entry-card:hover { transform: translateY(-1px); border-color: rgba(129,140,248,0.85); }
+.theme-dot { width: 15px; height: 15px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.22); }
+.theme-name { font-size: 0.8rem; font-weight: 700; color: #ffffff; }
+.theme-desc { font-size: 0.69rem; color: var(--text-muted); margin-top: 2px; }
 .storage-bar-track {
-    width: 100%; height: 9px; border-radius: 999px; background: rgba(255,255,255,0.10);
+    width: 100%; height: 7px; border-radius: 999px; background: rgba(255,255,255,0.08);
     overflow: hidden; margin: 8px 0 6px;
 }
-.storage-bar-fill { height: 100%; width: 0%; background: var(--accent, #e50914); transition: width 0.3s ease; border-radius: 999px; }
+.storage-bar-fill { height: 100%; width: 0%; background: var(--accent); transition: width 0.3s ease; border-radius: 999px; }
 .dl-item-card {
     display: flex; gap: 12px; align-items: flex-start;
-    background: #121728; border: 1px solid rgba(255,255,255,0.10);
-    border-radius: 14px; padding: 12px; margin-bottom: 10px;
+    background: var(--surface-solid); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px; margin-bottom: 10px;
 }
 .dl-poster {
-    width: 54px; height: 78px; border-radius: 9px; object-fit: cover;
-    background: #1b2236; flex-shrink: 0;
+    width: 54px; height: 78px; border-radius: 8px; object-fit: cover;
+    background: var(--surface-2); flex-shrink: 0;
 }
 .dl-q-pill, .dl-lang-pill {
-    background: #1a2136; border: 1px solid rgba(255,255,255,0.18); color: #f8fafc;
-    padding: 8px 12px; border-radius: 10px; font-size: 0.78rem; font-weight: 700; cursor: pointer;
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+    padding: 8px 12px; border-radius: 8px; font-size: 0.78rem; font-weight: 600; cursor: pointer;
     transition: border-color 0.15s, background 0.15s;
 }
 .dl-q-pill.active, .dl-lang-pill.active {
-    background: var(--accent, #e50914); border-color: var(--accent, #e50914); color: #fff;
+    background: var(--accent); border-color: var(--accent); color: #fff;
 }
 .btn-icon-nav {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    height: 36px; padding: 0 11px; border-radius: 9px; border: 1px solid rgba(255,255,255,0.14);
-    background: rgba(22, 27, 44, 0.92); color: #f8fafc; font-size: 0.78rem; font-weight: 700;
+    height: 34px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface-2); color: var(--text); font-size: 0.76rem; font-weight: 600;
     cursor: pointer; position: relative; white-space: nowrap;
 }
-.btn-icon-nav:hover { border-color: var(--accent, #e50914); }
+.btn-icon-nav:hover { border-color: var(--border-strong); background: var(--surface-hover); }
 .nav-dl-badge {
-    min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
-    background: var(--accent, #e50914); color: #fff; font-size: 0.66rem; font-weight: 900;
+    min-width: 17px; height: 17px; padding: 0 5px; border-radius: 999px;
+    background: var(--accent); color: #fff; font-size: 0.64rem; font-weight: 800;
     display: inline-flex; align-items: center; justify-content: center;
 }
 .live-dl-banner {
     display: none; position: fixed; right: 16px; bottom: 18px; z-index: 85;
     width: min(370px, calc(100vw - 24px));
-    background: #121728; border: 1px solid rgba(229, 9, 20, 0.55); border-radius: 15px;
-    padding: 11px 13px; box-shadow: 0 16px 40px rgba(0,0,0,0.82); color: #f8fafc;
+    background: var(--surface-solid); border: 1px solid var(--border-strong); border-radius: 12px;
+    padding: 11px 13px; box-shadow: 0 14px 36px rgba(0,0,0,0.82); color: var(--text);
 }
 .live-dl-banner.show { display: block; animation: toastIn 0.2s ease; }
+
+/* Startup Update Available Modal */
+.startup-update-card {
+    width: 100%; max-width: 400px; text-align: left;
+    background: var(--surface-solid); border: 1px solid var(--border-strong);
+    border-radius: 16px; padding: 20px 18px; color: var(--text);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.9);
+}
+.startup-update-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px;
+}
+.startup-update-ico {
+    width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
+    background: rgba(229, 9, 20, 0.14); border: 1px solid rgba(229, 9, 20, 0.35);
+    color: var(--netflix); display: grid; place-items: center;
+}
+.startup-ver-row {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin-bottom: 10px; font-family: ui-monospace, Consolas, monospace; font-size: 0.76rem;
+}
+.startup-ver-pill {
+    padding: 3px 8px; border-radius: 6px; background: var(--surface-2);
+    border: 1px solid var(--border); color: var(--text-muted); font-weight: 700;
+}
+.startup-ver-pill.new {
+    background: rgba(34, 197, 94, 0.14); border-color: rgba(34, 197, 94, 0.34); color: #86efac;
+}
+.startup-update-notes {
+    font-size: 0.78rem; color: var(--text-muted); line-height: 1.5;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 12px; max-height: 150px; overflow-y: auto; white-space: pre-line;
+    margin-bottom: 12px;
+}
+.startup-update-actions {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+}
 @media (max-width: 767px) {
     .modal-overlay.fullscreen-mobile { padding: 0; }
     .modal-overlay.fullscreen-mobile .settings-dialog {
@@ -4965,16 +4934,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 
 .mobile-dock {
     display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 65;
-    background: rgba(7, 9, 16, 0.94); backdrop-filter: blur(18px); border-top: 1px solid var(--border);
+    background: rgba(9, 9, 11, 0.96); backdrop-filter: blur(16px); border-top: 1px solid var(--border);
     padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
 }
 .mobile-dock-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; }
 .dock-btn {
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-    min-height: 48px; border: none; background: transparent; color: var(--text-muted);
-    font-size: 0.7rem; font-weight: 700; border-radius: 10px; cursor: pointer;
+    min-height: 46px; border: none; background: transparent; color: var(--text-muted);
+    font-size: 0.68rem; font-weight: 600; border-radius: 8px; cursor: pointer;
 }
-.dock-btn.active, .dock-btn:active { color: #fff; background: rgba(255,255,255,0.08); }
+.dock-btn.active, .dock-btn:active { color: #fff; }
 
 .shelf-row { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: thin; }
 .shelf-card {
@@ -5149,13 +5118,13 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .btn-start-over:hover { border-color: var(--netflix); color: #fff; }
 .smart-strip { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 14px; }
 .smart-pill {
-    min-height: 31px; padding: 4px 11px; border-radius: 999px;
-    border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.04);
-    color: #cbd5e1; font-size: 0.74rem; font-weight: 700; cursor: pointer;
-    display: inline-flex; align-items: center; gap: 5px; transition: all 0.15s;
+    min-height: 31px; padding: 4px 11px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--surface-solid);
+    color: var(--text-muted); font-size: 0.74rem; font-weight: 600; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 5px; transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
-.smart-pill:hover { border-color: rgba(229,9,20,0.55); color: #fff; }
-.smart-pill.active { background: rgba(229,9,20,0.22); border-color: var(--netflix); color: #fff; box-shadow: 0 0 0 2px rgba(229,9,20,0.16); }
+.smart-pill:hover { border-color: var(--border-strong); color: #fff; }
+.smart-pill.active { background: var(--netflix); border-color: var(--netflix); color: #fff; }
 .sub-finder-box {
     background: rgba(8, 11, 18, 0.82); border: 1px solid var(--border);
     border-radius: 12px; padding: 12px; margin-top: 14px;
@@ -5260,7 +5229,10 @@ html, body { max-width: 100%; overflow-x: hidden; }
         </div>
 
         <div class="nav-actions">
-            <button class="smart-pill active" id="btnNavUpdatePill" onclick="openUpdateModal(false)" style="display:none;padding:4px 10px;font-size:0.72rem;" title="New Update Available">⬆ Update</button>
+            <button class="smart-pill active" id="btnNavUpdatePill" onclick="openUpdateModal(false)" style="display:none;padding:4px 10px;font-size:0.72rem;" title="New Update Available">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>
+                <span id="btnNavUpdateLabel">Update</span>
+            </button>
             <span class="mode-chip" id="deviceModeChip" onclick="openSettingsModal()" style="cursor:pointer;" title="Profile, Theme &amp; Status"><span id="deviceModeText">PC VLC Mode</span></span>
             <button class="btn-install-nav" id="btnInstallApp" onclick="triggerInstallApp()" title="Install App" aria-label="Install App">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -5308,13 +5280,10 @@ html, body { max-width: 100%; overflow-x: hidden; }
             <div>
                 <div class="hero-kicker">
                     <span class="hero-s-tag">
-                        <svg width="14" height="17" viewBox="0 0 120 140" aria-hidden="true"><path d="M98 18 L44 18 C25 18 18 30 18 46 C18 63 29 72 51 77 L69 81 C82 84 85 89 85 95 C85 103 77 107 62 107 L19 107 L19 125 L76 125 C97 125 104 111 104 94 C104 75 91 66 68 61 L50 57 C38 54 35 49 35 43 C35 36 42 33 56 33 L98 33 Z" fill="#e50914"/></svg>
+                        <svg width="13" height="16" viewBox="0 0 120 140" aria-hidden="true"><path d="M98 18 L44 18 C25 18 18 30 18 46 C18 63 29 72 51 77 L69 81 C82 84 85 89 85 95 C85 103 77 107 62 107 L19 107 L19 125 L76 125 C97 125 104 111 104 94 C104 75 91 66 68 61 L50 57 C38 54 35 49 35 43 C35 36 42 33 56 33 L98 33 Z" fill="#e50914"/></svg>
                         <span id="heroTypeBadge">FEATURED</span>
                     </span>
-                    <span class="prime-check">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm-1.2 14.2L6.6 12l1.4-1.4 2.8 2.8 5.6-5.6 1.4 1.4z"/></svg>
-                        Included Free &bull; Instant Seek
-                    </span>
+                    <span class="prime-check" style="display:none;">Instant Seek</span>
                     <span class="hotstar-4k" id="heroQualityBadge">4K UHD</span>
                 </div>
                 <h1 class="hero-title" id="heroTitle">Loading Latest HDHub4u Releases...</h1>
@@ -5346,19 +5315,19 @@ html, body { max-width: 100%; overflow-x: hidden; }
         <div class="glass-card hero-link-card">
             <div class="section-eyebrow">
                 <h2>
-                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#e50914" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                    Direct HubCloud / HDHub4u / HLS Link Player
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                    Direct Stream Link
                 </h2>
-                <span class="pill-subtle">PC VLC + Phone VLC + Instant Seek</span>
+                <span class="pill-subtle">HDHub4u &bull; HubCloud &bull; HLS</span>
             </div>
             <div class="link-input-wrap">
                 <div class="input-group">
-                    <input type="text" id="urlInput" placeholder="https://hubcloud.mov/drive/... hdhub4u, hubdrive ya hdstream4u link paste karein" onkeydown="if(event.key==='Enter') resolveLink()">
+                    <input type="text" id="urlInput" placeholder="Paste HDHub4u, HubCloud, or HLS link..." onkeydown="if(event.key==='Enter') resolveLink()">
                     <button class="btn-paste" type="button" onclick="pasteToInput()" title="Paste from Clipboard">Paste</button>
                 </div>
                 <button class="btn-primary" id="btnResolve" onclick="resolveLink()">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                    Resolve &amp; Stream
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+                    Resolve &amp; Play
                 </button>
             </div>
             <div class="status-bar" id="resolveStatus">
@@ -5404,7 +5373,10 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 </div>
             </div>
             <div style="display:flex;gap:8px;align-items:center;">
-                <button class="btn-sm btn-indigo-sm" id="libOpenDownloadsBtn" onclick="openDownloadsModal()">📥 Downloads <span id="libDlCount">(0)</span></button>
+                <button class="btn-sm btn-indigo-sm" id="libOpenDownloadsBtn" onclick="openDownloadsModal()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Downloads <span id="libDlCount">(0)</span>
+                </button>
                 <button class="btn-sm btn-copy-sm" onclick="clearLibraryTab()">Clear</button>
             </div>
         </div>
@@ -5438,7 +5410,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                     <div class="quality-row">
                         <select id="qualitySelect" class="select-control"></select>
                         <button id="btnStreamQuality" class="btn-primary" onclick="useSelectedQuality()">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"/></svg>
                             <span>Stream Quality</span>
                         </button>
                         <button id="btnDownloadQuality" class="btn-secondary" type="button" onclick="openDownloadPickerFromDetails()" style="min-height:44px;padding:0 16px;border-radius:11px;display:inline-flex;align-items:center;gap:7px;font-weight:800;white-space:nowrap;">
@@ -5480,7 +5452,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
                         <span id="btnMainVlcText">Play in StreamHub In-Built Player (0% Loss 4K HDR)</span>
                     </button>
                     <button class="btn-start-over" id="btnStartOver" onclick="launchVlcFromStart()" style="display:none;" title="Shuru (0:00) se chalayein">
-                        ↺ Start Over
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                        Start Over
                     </button>
                     <button class="btn-next-ep" id="btnNextEpisode" onclick="playNextEpisode()" style="display:none;">
                         <span id="btnNextEpisodeText">Next Episode</span>
@@ -5605,11 +5578,14 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 <button class="filter-btn active" id="filterAll" onclick="setCatalogFilter('all')">All</button>
                 <button class="filter-btn" id="filterMovies" onclick="setCatalogFilter('movies')">Movies</button>
                 <button class="filter-btn" id="filterSeries" onclick="setCatalogFilter('series')">Web Series</button>
-                <button class="filter-btn" id="btnRefreshFeed" onclick="refreshHomeFeed()" title="Load Latest Releases">↻ Refresh</button>
+                <button class="filter-btn" id="btnRefreshFeed" onclick="refreshHomeFeed()" title="Load Latest Releases" style="display:inline-flex;align-items:center;gap:5px;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    Refresh
+                </button>
             </div>
         </div>
         <div class="cat-strip" id="categoryStrip" role="tablist" aria-label="Browse Categories">
-            <button class="cat-chip active" data-cat="" onclick="selectCategory(this, '')">Trending All</button>
+            <button class="cat-chip active" data-cat="" onclick="selectCategory(this, '')">Trending</button>
             <button class="cat-chip" data-cat="hollywood-movies" onclick="selectCategory(this, 'hollywood-movies')">Hollywood</button>
             <button class="cat-chip" data-cat="bollywood-movies" onclick="selectCategory(this, 'bollywood-movies')">Bollywood</button>
             <button class="cat-chip" data-cat="hindi-dubbed" onclick="selectCategory(this, 'hindi-dubbed')">Hindi Dubbed</button>
@@ -5623,13 +5599,19 @@ html, body { max-width: 100%; overflow-x: hidden; }
             <button class="cat-chip" data-cat="action-movies" onclick="selectCategory(this, 'action-movies')">Action</button>
         </div>
         <div class="smart-strip" id="smartFilterStrip" aria-label="Smart filters">
-            <button class="smart-pill" data-sf="4k" onclick="toggleSmartFilter('4k', this)">⚡ 4K UHD Only</button>
+            <button class="smart-pill" data-sf="4k" onclick="toggleSmartFilter('4k', this)">4K UHD</button>
             <button class="smart-pill" data-sf="hindi" onclick="toggleSmartFilter('hindi', this)">Hindi / Dual Audio</button>
-            <button class="smart-pill" data-sf="recent" onclick="toggleSmartFilter('recent', this)">2025–2026 New</button>
-            <button class="smart-pill" data-sf="imdb7" onclick="toggleSmartFilter('imdb7', this)">⭐ IMDb 7+</button>
-            <button class="smart-pill" id="btnSmartClear" onclick="clearSmartFilters()" style="display:none;">✕ Clear</button>
-            <button class="smart-pill" id="btnHomeDownloadsPill" onclick="openDownloadsModal()" style="display:inline-flex;align-items:center;gap:5px;">📥 My Downloads <span id="homeDlCountPill">(0)</span></button>
-            <button class="smart-pill" id="btnAppVersionChip" onclick="openSettingsModal()" style="margin-left:auto;" title="Settings, Profile, Themes &amp; Updates">v2.5.3 • Settings</button>
+            <button class="smart-pill" data-sf="recent" onclick="toggleSmartFilter('recent', this)">2025–2026</button>
+            <button class="smart-pill" data-sf="imdb7" onclick="toggleSmartFilter('imdb7', this)">IMDb 7+</button>
+            <button class="smart-pill" id="btnSmartClear" onclick="clearSmartFilters()" style="display:none;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                Clear
+            </button>
+            <button class="smart-pill" id="btnHomeDownloadsPill" onclick="openDownloadsModal()" style="display:inline-flex;align-items:center;gap:5px;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Downloads <span id="homeDlCountPill">(0)</span>
+            </button>
+            <button class="smart-pill" id="btnAppVersionChip" onclick="openSettingsModal()" style="margin-left:auto;" title="Settings, Profile, Themes &amp; Updates">v2.5.4 &bull; Settings</button>
         </div>
         <div class="search-grid" id="searchGrid"></div>
         <div class="load-more-wrap">
@@ -5773,14 +5755,14 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 <track id="inlineSubTrack" kind="subtitles" srclang="en" label="StreamHub Sub" default>
             </video>
             <div class="inline-next-banner" id="inlineNextBanner">
-                <span id="inlineNextText" style="font-size:0.8rem;font-weight:800;color:#fde68a;">Next Episode in 5s</span>
-                <button type="button" class="btn-sm btn-vlc-sm" onclick="triggerInlineNextNow()">▶ Play Now</button>
+                <span id="inlineNextText" style="font-size:0.8rem;font-weight:700;color:#fde68a;">Next Episode in 5s</span>
+                <button type="button" class="btn-sm btn-vlc-sm" onclick="triggerInlineNextNow()">Play Now</button>
                 <button type="button" class="btn-sm btn-copy-sm" onclick="cancelInlineNext()">Cancel</button>
             </div>
         </div>
         <div class="inline-controls-bar" id="inlineControlsBar">
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                <button type="button" class="btn-sm btn-indigo-sm" onclick="skipInlineIntro(85)">⏩ Skip Intro (+85s • S)</button>
+                <button type="button" class="btn-sm btn-indigo-sm" onclick="skipInlineIntro(85)">Skip Intro (+85s • S)</button>
                 <button type="button" class="btn-sm btn-vlc-sm" id="btnInlineNextEp" onclick="triggerInlineNextNow()" style="display:none;">Next Episode &rsaquo;</button>
             </div>
             <div style="display:flex;gap:8px;align-items:center;font-size:0.75rem;color:var(--text-muted);">
@@ -5795,10 +5777,12 @@ html, body { max-width: 100%; overflow-x: hidden; }
     <div class="settings-dialog">
         <div class="settings-head">
             <div style="display:flex;align-items:center;gap:12px;">
-                <span id="settingsHeadAvatar" style="width:42px;height:42px;border-radius:13px;background:#1a2033;border:1px solid rgba(255,255,255,0.2);display:grid;place-items:center;font-size:1.35rem;">🎬</span>
+                <span id="settingsHeadAvatar" style="width:40px;height:40px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border-strong);color:#fff;display:grid;place-items:center;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+                </span>
                 <div>
-                    <h2 id="settingsModalTitle" style="font-size:1.1rem;font-weight:900;color:#fff;">⚙️ Settings</h2>
-                    <div id="settingsHeadSub" style="font-size:0.74rem;color:#94a3b8;margin-top:1px;">StreamHub User • v2.5.1</div>
+                    <h2 id="settingsModalTitle" style="font-size:1.05rem;font-weight:800;color:#fff;">Settings</h2>
+                    <div id="settingsHeadSub" style="font-size:0.73rem;color:var(--text-muted);margin-top:1px;">StreamHub User • v2.5.4</div>
                 </div>
             </div>
             <button class="btn-close-card" onclick="closeSettingsModal()" aria-label="Close settings">
@@ -5808,71 +5792,83 @@ html, body { max-width: 100%; overflow-x: hidden; }
         <div class="settings-body">
             <button type="button" class="settings-menu-item" onclick="openSettingsSubPage('profilePageModal')">
                 <div class="settings-menu-left">
-                    <span class="settings-menu-ico">👤</span>
+                    <span class="settings-menu-ico">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    </span>
                     <div style="min-width:0;flex:1;">
                         <div class="settings-menu-title">Profile &amp; Audio Language</div>
                         <div class="settings-menu-sub" id="menuSubProfile">StreamHub User • Audio: Auto</div>
                     </div>
                 </div>
-                <span class="settings-menu-chev">›</span>
+                <span class="settings-menu-chev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></span>
             </button>
 
             <button type="button" class="settings-menu-item" onclick="openSettingsSubPage('themePageModal')">
                 <div class="settings-menu-left">
-                    <span class="settings-menu-ico">🎨</span>
+                    <span class="settings-menu-ico">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18"/><path d="M12 8l6-3"/><path d="M12 13l7-3"/></svg>
+                    </span>
                     <div style="min-width:0;flex:1;">
-                        <div class="settings-menu-title">App Theme</div>
+                        <div class="settings-menu-title">App Appearance</div>
                         <div class="settings-menu-sub" id="menuSubTheme">Netflix Crimson</div>
                     </div>
                 </div>
-                <span class="settings-menu-chev">›</span>
+                <span class="settings-menu-chev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></span>
             </button>
 
             <button type="button" class="settings-menu-item" onclick="openSettingsSubPage('dlSettingsPageModal')">
                 <div class="settings-menu-left">
-                    <span class="settings-menu-ico">💾</span>
+                    <span class="settings-menu-ico">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                    </span>
                     <div style="min-width:0;flex:1;">
-                        <div class="settings-menu-title">Download &amp; Storage Settings</div>
+                        <div class="settings-menu-title">Download &amp; Storage</div>
                         <div class="settings-menu-sub" id="menuSubDlPrefs">Used: 0 MB / 4 GB • 720p • Expire 7d</div>
                     </div>
                 </div>
-                <span class="settings-menu-chev">›</span>
+                <span class="settings-menu-chev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></span>
             </button>
 
             <button type="button" class="settings-menu-item" onclick="openDownloadsModal(true)">
                 <div class="settings-menu-left">
-                    <span class="settings-menu-ico">📥</span>
+                    <span class="settings-menu-ico">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    </span>
                     <div style="min-width:0;flex:1;">
-                        <div class="settings-menu-title">My Offline Downloads</div>
+                        <div class="settings-menu-title">My Downloads</div>
                         <div class="settings-menu-sub" id="menuSubMyDownloads">0 Ready • 0 Active</div>
                     </div>
                 </div>
-                <span class="settings-menu-chev">›</span>
+                <span class="settings-menu-chev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></span>
             </button>
 
-            <button type="button" class="settings-menu-item" onclick="openUpdateModal(true)" style="background:linear-gradient(135deg, rgba(99,102,241,0.20), rgba(229,9,20,0.12));border-color:rgba(99,102,241,0.48);">
+            <button type="button" class="settings-menu-item highlight" onclick="openUpdateModal(true)">
                 <div class="settings-menu-left">
-                    <span class="settings-menu-ico">🔄</span>
+                    <span class="settings-menu-ico">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    </span>
                     <div style="min-width:0;flex:1;">
                         <div class="settings-menu-title" style="display:flex;align-items:center;gap:8px;">
                             <span>App Updates</span>
-                            <span id="settingsUpdateBadge" style="font-size:0.68rem;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,0.14);color:#e2e8f0;font-weight:800;">v2.5.1</span>
+                            <span id="settingsUpdateBadge" style="font-size:0.68rem;padding:2px 7px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);font-weight:700;">v2.5.4</span>
                         </div>
-                        <div class="settings-menu-sub" id="settingsUpdateSub">Check naya APK / Instant Update &amp; Release Notes</div>
+                        <div class="settings-menu-sub" id="settingsUpdateSub">Check latest APK / OTA updates</div>
                     </div>
                 </div>
-                <span class="settings-menu-chev">›</span>
+                <span class="settings-menu-chev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></span>
             </button>
 
             <button type="button" class="settings-menu-item" onclick="openSettingsSubPage('toolsPageModal')">
                 <div class="settings-menu-left">
-                    <span class="settings-menu-ico">🛠️</span>
+                    <span class="settings-menu-ico">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+                    </span>
                     <div style="min-width:0;flex:1;">
-                        <div class="settings-menu-title">Catalog Refresh &amp; Tools</div>
-                        <div class="settings-menu-sub">Refresh latest movies feed &amp; options</div>
+                        <div class="settings-menu-title">Catalog &amp; Tools</div>
+                        <div class="settings-menu-sub">Refresh feed cache &amp; device utilities</div>
                     </div>
                 </div>
-                <span class="settings-menu-chev">›</span>
+                <span class="settings-menu-chev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></span>
             </button>
         </div>
     </div>
@@ -5883,8 +5879,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
     <div class="settings-dialog">
         <div class="settings-head">
             <div style="display:flex;align-items:center;gap:10px;">
-                <button type="button" class="btn-sm btn-copy-sm" onclick="closeSubPage('profilePageModal')">← Settings</button>
-                <h2 id="profilePageTitle" style="font-size:1.05rem;font-weight:900;color:#fff;">👤 Profile &amp; Language</h2>
+                <button type="button" class="btn-sm btn-copy-sm" onclick="closeSubPage('profilePageModal')">Back</button>
+                <h2 id="profilePageTitle" style="font-size:1rem;font-weight:700;color:#fff;">Profile &amp; Language</h2>
             </div>
             <button class="btn-close-card" onclick="closeAllSettingsPages()" aria-label="Close">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -5892,14 +5888,14 @@ html, body { max-width: 100%; overflow-x: hidden; }
         </div>
         <div class="settings-body">
             <section class="settings-card">
-                <div class="settings-card-title"><span>Choose Avatar</span></div>
+                <div class="settings-card-title"><span>Profile Icon</span></div>
                 <div class="avatar-grid" id="avatarPickerGrid">
-                    <button type="button" class="avatar-chip active" data-av="🎬" onclick="pickProfileAvatar(this)">🎬</button>
-                    <button type="button" class="avatar-chip" data-av="🍿" onclick="pickProfileAvatar(this)">🍿</button>
-                    <button type="button" class="avatar-chip" data-av="🔥" onclick="pickProfileAvatar(this)">🔥</button>
-                    <button type="button" class="avatar-chip" data-av="👑" onclick="pickProfileAvatar(this)">👑</button>
-                    <button type="button" class="avatar-chip" data-av="🦁" onclick="pickProfileAvatar(this)">🦁</button>
-                    <button type="button" class="avatar-chip" data-av="⚡" onclick="pickProfileAvatar(this)">⚡</button>
+                    <button type="button" class="avatar-chip active" data-av="film" onclick="pickProfileAvatar(this)" aria-label="Cinema Icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg></button>
+                    <button type="button" class="avatar-chip" data-av="tv" onclick="pickProfileAvatar(this)" aria-label="TV Icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg></button>
+                    <button type="button" class="avatar-chip" data-av="star" onclick="pickProfileAvatar(this)" aria-label="Star Icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+                    <button type="button" class="avatar-chip" data-av="compass" onclick="pickProfileAvatar(this)" aria-label="Discover Icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg></button>
+                    <button type="button" class="avatar-chip" data-av="shield" onclick="pickProfileAvatar(this)" aria-label="Shield Icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></button>
+                    <button type="button" class="avatar-chip" data-av="user" onclick="pickProfileAvatar(this)" aria-label="User Icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></button>
                 </div>
                 <div class="settings-row">
                     <div style="flex:1 1 180px;">
@@ -5926,7 +5922,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                         <option value="Kannada">Kannada</option>
                     </select>
                 </div>
-                <button type="button" class="vlc-banner" style="min-height:46px;font-size:0.92rem;justify-content:center;margin-top:12px;" onclick="saveProfileSettings()">Save Profile</button>
+                <button type="button" class="vlc-banner" style="min-height:44px;font-size:0.9rem;justify-content:center;margin-top:12px;" onclick="saveProfileSettings()">Save Profile</button>
             </section>
         </div>
     </div>
@@ -5937,8 +5933,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
     <div class="settings-dialog">
         <div class="settings-head">
             <div style="display:flex;align-items:center;gap:10px;">
-                <button type="button" class="btn-sm btn-copy-sm" onclick="closeSubPage('themePageModal')">← Settings</button>
-                <h2 id="themePageTitle" style="font-size:1.05rem;font-weight:900;color:#fff;">🎨 App Theme</h2>
+                <button type="button" class="btn-sm btn-copy-sm" onclick="closeSubPage('themePageModal')">Back</button>
+                <h2 id="themePageTitle" style="font-size:1rem;font-weight:700;color:#fff;">App Appearance</h2>
             </div>
             <button class="btn-close-card" onclick="closeAllSettingsPages()" aria-label="Close">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -5947,14 +5943,14 @@ html, body { max-width: 100%; overflow-x: hidden; }
         <div class="settings-body">
             <section class="settings-card">
                 <div class="settings-card-title">
-                    <span>Select App Appearance</span>
-                    <span id="activeThemeBadge" style="font-size:0.74rem;color:#cbd5e1;font-weight:700;">Netflix Crimson</span>
+                    <span>Select App Theme</span>
+                    <span id="activeThemeBadge" style="font-size:0.74rem;color:var(--text-muted);font-weight:600;">Netflix Crimson</span>
                 </div>
                 <div class="theme-grid" id="themePickerGrid">
                     <button type="button" class="theme-card active" data-theme-id="netflix" onclick="applyAndSaveTheme('netflix')">
-                        <div class="theme-dots"><span class="theme-dot" style="background:#05060b;"></span><span class="theme-dot" style="background:#e50914;"></span></div>
+                        <div class="theme-dots"><span class="theme-dot" style="background:#09090b;"></span><span class="theme-dot" style="background:#e50914;"></span></div>
                         <div class="theme-name">Netflix Crimson</div>
-                        <div class="theme-desc">Signature cinema dark red</div>
+                        <div class="theme-desc">Matte obsidian with red accent</div>
                     </button>
                     <button type="button" class="theme-card" data-theme-id="amoled" onclick="applyAndSaveTheme('amoled')">
                         <div class="theme-dots"><span class="theme-dot" style="background:#000000;"></span><span class="theme-dot" style="background:#e50914;"></span></div>
@@ -5962,14 +5958,14 @@ html, body { max-width: 100%; overflow-x: hidden; }
                         <div class="theme-desc">Pitch black OLED battery saver</div>
                     </button>
                     <button type="button" class="theme-card" data-theme-id="prime" onclick="applyAndSaveTheme('prime')">
-                        <div class="theme-dots"><span class="theme-dot" style="background:#040914;"></span><span class="theme-dot" style="background:#00a8e1;"></span></div>
+                        <div class="theme-dots"><span class="theme-dot" style="background:#070b12;"></span><span class="theme-dot" style="background:#00a8e1;"></span></div>
                         <div class="theme-name">Prime Sapphire</div>
-                        <div class="theme-desc">Deep ocean sapphire blue</div>
+                        <div class="theme-desc">Deep slate with cyan accent</div>
                     </button>
                     <button type="button" class="theme-card" data-theme-id="gold" onclick="applyAndSaveTheme('gold')">
-                        <div class="theme-dots"><span class="theme-dot" style="background:#08070d;"></span><span class="theme-dot" style="background:#f59e0b;"></span></div>
-                        <div class="theme-name">Royal Theater Gold</div>
-                        <div class="theme-desc">Warm luxury amber gold</div>
+                        <div class="theme-dots"><span class="theme-dot" style="background:#0a090b;"></span><span class="theme-dot" style="background:#eab308;"></span></div>
+                        <div class="theme-name">Theater Gold</div>
+                        <div class="theme-desc">Warm obsidian with brass accent</div>
                     </button>
                 </div>
             </section>
@@ -5982,8 +5978,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
     <div class="settings-dialog">
         <div class="settings-head">
             <div style="display:flex;align-items:center;gap:10px;">
-                <button type="button" class="btn-sm btn-copy-sm" onclick="closeSubPage('dlSettingsPageModal')">← Settings</button>
-                <h2 id="dlSettingsPageTitle" style="font-size:1.05rem;font-weight:900;color:#fff;">💾 Download &amp; Storage</h2>
+                <button type="button" class="btn-sm btn-copy-sm" onclick="closeSubPage('dlSettingsPageModal')">Back</button>
+                <h2 id="dlSettingsPageTitle" style="font-size:1rem;font-weight:700;color:#fff;">Download &amp; Storage</h2>
             </div>
             <button class="btn-close-card" onclick="closeAllSettingsPages()" aria-label="Close">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -5992,14 +5988,17 @@ html, body { max-width: 100%; overflow-x: hidden; }
         <div class="settings-body">
             <section class="settings-card">
                 <div class="settings-card-title">
-                    <span>Private App Storage (.nomedia)</span>
-                    <span style="font-size:0.7rem;color:#6ee7b7;background:rgba(16,185,129,0.14);border:1px solid rgba(16,185,129,0.3);padding:2px 8px;border-radius:999px;">🔒 Gallery Hidden</span>
+                    <span>Private App Storage</span>
+                    <span style="display:inline-flex;align-items:center;gap:4px;font-size:0.69rem;color:#86efac;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.28);padding:2px 8px;border-radius:6px;">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        Gallery Hidden
+                    </span>
                 </div>
-                <div style="font-size:0.75rem;color:#94a3b8;line-height:1.45;">
-                    Movies app ke andar private folder (<code style="color:#cbd5e1;">filesDir/offline_movies</code>) me save hoti hain — phone ki Gallery ya File Manager me show nahi hoti, aur app uninstall karte hi delete ho jati hain.
+                <div style="font-size:0.75rem;color:var(--text-muted);line-height:1.45;">
+                    Movies app ke private folder (<code style="color:var(--text);">filesDir/offline_movies</code>) me save hoti hain — phone ki Gallery ya File Manager me show nahi hoti, aur app uninstall karte hi delete ho jati hain.
                 </div>
                 <div class="storage-bar-track"><div class="storage-bar-fill" id="setStorageBarFill"></div></div>
-                <div style="display:flex;justify-content:space-between;font-size:0.74rem;color:#cbd5e1;font-weight:700;margin-bottom:10px;">
+                <div style="display:flex;justify-content:space-between;font-size:0.74rem;color:var(--text);font-weight:600;margin-bottom:10px;">
                     <span id="setStorageText">Used: 0 MB / Limit: 4 GB</span>
                     <span id="setDownloadCountText">0 Offline Items</span>
                 </div>
@@ -6021,7 +6020,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                         <div class="settings-label">Smart Auto-Delete (Watched)</div>
                         <div class="settings-sub">Movie 95%+ dekhne par space bachaane ke liye auto-delete</div>
                     </div>
-                    <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:0.8rem;font-weight:700;">
+                    <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:0.8rem;font-weight:600;">
                         <input type="checkbox" id="setAutoDelWatched" checked onchange="saveDownloadPrefs()" style="width:18px;height:18px;accent-color:var(--accent);">
                         <span>On</span>
                     </label>
@@ -6051,8 +6050,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
                     </select>
                 </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
-                    <button type="button" class="btn-sm btn-indigo-sm" style="flex:1 1 160px;min-height:40px;" onclick="closeSubPage('dlSettingsPageModal'); openDownloadsModal(true);">📂 Open My Downloads</button>
-                    <button type="button" class="btn-sm btn-copy-sm" style="min-height:40px;" onclick="clearAllOfflineDownloads()">🗑️ Clear Offline Storage</button>
+                    <button type="button" class="btn-sm btn-indigo-sm" style="flex:1 1 160px;min-height:40px;" onclick="closeSubPage('dlSettingsPageModal'); openDownloadsModal(true);">Open My Downloads</button>
+                    <button type="button" class="btn-sm btn-copy-sm" style="min-height:40px;" onclick="clearAllOfflineDownloads()">Clear Storage</button>
                 </div>
             </section>
         </div>
@@ -6064,8 +6063,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
     <div class="settings-dialog">
         <div class="settings-head">
             <div style="display:flex;align-items:center;gap:10px;">
-                <button type="button" class="btn-sm btn-copy-sm" onclick="closeSubPage('toolsPageModal')">← Settings</button>
-                <h2 id="toolsPageTitle" style="font-size:1.05rem;font-weight:900;color:#fff;">🛠️ Catalog &amp; Tools</h2>
+                <button type="button" class="btn-sm btn-copy-sm" onclick="closeSubPage('toolsPageModal')">Back</button>
+                <h2 id="toolsPageTitle" style="font-size:1rem;font-weight:700;color:#fff;">Catalog &amp; Tools</h2>
             </div>
             <button class="btn-close-card" onclick="closeAllSettingsPages()" aria-label="Close">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -6074,17 +6073,17 @@ html, body { max-width: 100%; overflow-x: hidden; }
         <div class="settings-body">
             <section class="settings-card">
                 <div class="settings-card-title"><span>Catalog &amp; Cache</span></div>
-                <div style="font-size:0.78rem;color:#94a3b8;margin-bottom:12px;line-height:1.45;">
+                <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px;line-height:1.45;">
                     Website par aayi bilkul nayi movies aur series ko turant load karne ke liye Refresh dabayein.
                 </div>
-                <button type="button" class="vlc-banner" style="min-height:44px;font-size:0.9rem;justify-content:center;" onclick="closeAllSettingsPages(); clearCacheAndRefresh();">↻ Refresh Latest Movies</button>
+                <button type="button" class="vlc-banner" style="min-height:44px;font-size:0.9rem;justify-content:center;" onclick="closeAllSettingsPages(); clearCacheAndRefresh();">Refresh Latest Movies</button>
                 <div id="pcSetupToolsCard" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
-                    <div style="font-size:0.78rem;font-weight:800;color:var(--gold);margin-bottom:8px;">1-Click Easy PC Setup Tools</div>
+                    <div style="font-size:0.78rem;font-weight:700;color:var(--gold);margin-bottom:8px;">PC Setup Utilities</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 140px;" onclick="runSetupAction('shortcut')">Add Desktop Shortcut</button>
                         <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 140px;" onclick="runSetupAction('firewall')">Fix Phone Wi-Fi Firewall</button>
-                        <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 120px;" onclick="closeAllSettingsPages(); openRemoteModal();">📡 PC Remote</button>
-                        <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 120px;" onclick="closeAllSettingsPages(); openQrModal();">📱 Phone QR</button>
+                        <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 120px;" onclick="closeAllSettingsPages(); openRemoteModal();">PC Remote</button>
+                        <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 120px;" onclick="closeAllSettingsPages(); openQrModal();">Phone QR</button>
                     </div>
                 </div>
             </section>
@@ -6097,10 +6096,10 @@ html, body { max-width: 100%; overflow-x: hidden; }
     <div class="settings-dialog">
         <div class="settings-head">
             <div style="display:flex;align-items:center;gap:10px;min-width:0;">
-                <button type="button" id="btnUpdateBackToSettings" class="btn-sm btn-copy-sm" onclick="backFromUpdateToSettings()" title="Back to Settings">← Settings</button>
+                <button type="button" id="btnUpdateBackToSettings" class="btn-sm btn-copy-sm" onclick="backFromUpdateToSettings()" title="Back to Settings">Back</button>
                 <div style="min-width:0;">
-                    <h2 id="updateModalTitle" style="font-size:1.05rem;font-weight:900;color:#fff;">🔄 App Updates</h2>
-                    <div id="updateMetaLine" style="font-size:0.74rem;color:#94a3b8;margin-top:2px;">Version loading...</div>
+                    <h2 id="updateModalTitle" style="font-size:1rem;font-weight:700;color:#fff;">App Updates</h2>
+                    <div id="updateMetaLine" style="font-size:0.73rem;color:var(--text-muted);margin-top:2px;">Version loading...</div>
                 </div>
             </div>
             <button class="btn-close-card" onclick="closeAllSettingsPages()" aria-label="Close update page">
@@ -6111,26 +6110,26 @@ html, body { max-width: 100%; overflow-x: hidden; }
         <div class="settings-body">
             <div class="settings-card">
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-                    <span style="font-size:0.86rem;font-weight:800;color:#fff;">Release Status</span>
-                    <button type="button" id="btnCheckUpdateBig" class="btn-sm btn-indigo-sm" onclick="checkAppUpdate(true, true)">🔄 Check for Updates</button>
+                    <span style="font-size:0.86rem;font-weight:700;color:#fff;">Release Status</span>
+                    <button type="button" id="btnCheckUpdateBig" class="btn-sm btn-indigo-sm" onclick="checkAppUpdate(true, true)">Check for Updates</button>
                 </div>
-                <div id="updateStatusBox" style="font-size:0.82rem;color:#cbd5e1;line-height:1.45;">Checking for updates...</div>
-                <div id="updateDownloadBox" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08);">
-                    <div id="updateNotesText" style="font-size:0.78rem;color:#cbd5e1;margin-bottom:10px;white-space:pre-line;line-height:1.45;"></div>
-                    <div id="updateProgWrap" style="display:none;background:#1e293b;border-radius:999px;height:8px;overflow:hidden;margin-bottom:10px;">
+                <div id="updateStatusBox" style="font-size:0.82rem;color:var(--text-muted);line-height:1.45;">Checking for updates...</div>
+                <div id="updateDownloadBox" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+                    <div id="updateNotesText" style="font-size:0.78rem;color:var(--text-muted);margin-bottom:10px;white-space:pre-line;line-height:1.45;"></div>
+                    <div id="updateProgWrap" style="display:none;background:var(--surface-2);border-radius:999px;height:7px;overflow:hidden;margin-bottom:10px;">
                         <div id="updateProgFill" style="height:100%;width:0%;background:var(--netflix);transition:width 0.25s;"></div>
                     </div>
-                    <button type="button" id="btnApplyUpdate" class="btn-sm btn-vlc-sm" onclick="applyAppUpdateNow()" style="width:100%;min-height:40px;font-size:0.85rem;display:none;">Download &amp; Install Update</button>
-                    <button type="button" id="btnOtaPyUpdate" class="btn-sm btn-vlc-sm" onclick="applyOtaPyUpdateNow()" style="display:none;width:100%;min-height:42px;font-size:0.86rem;margin-bottom:8px;">⚡ Instant Update (Fast ~0.5 MB)</button>
-                    <button type="button" id="btnApkUpdate" class="btn-sm btn-vlc-sm" onclick="applyAndroidApkUpdateNow()" style="display:none;width:100%;min-height:42px;font-size:0.86rem;">📱 Download &amp; Install APK</button>
-                    <a id="linkApkExternal" href="#" target="_blank" rel="noopener" onclick="if(window.StreamHubAndroid&&window.StreamHubAndroid.openExternalUrl){window.StreamHubAndroid.openExternalUrl(this.href);return false;}" style="display:none;margin-top:8px;text-align:center;font-size:0.76rem;color:#93c5fd;text-decoration:underline;">Ya Browser se APK Download Karein</a>
+                    <button type="button" id="btnApplyUpdate" class="btn-sm btn-vlc-sm" onclick="applyAppUpdateNow()" style="width:100%;min-height:40px;font-size:0.84rem;display:none;">Download &amp; Install Update</button>
+                    <button type="button" id="btnOtaPyUpdate" class="btn-sm btn-vlc-sm" onclick="applyOtaPyUpdateNow()" style="display:none;width:100%;min-height:42px;font-size:0.85rem;margin-bottom:8px;">Install Instant Update (~0.7 MB)</button>
+                    <button type="button" id="btnApkUpdate" class="btn-sm btn-vlc-sm" onclick="applyAndroidApkUpdateNow()" style="display:none;width:100%;min-height:42px;font-size:0.85rem;">Download &amp; Install APK</button>
+                    <a id="linkApkExternal" href="#" target="_blank" rel="noopener" onclick="if(window.StreamHubAndroid&&window.StreamHubAndroid.openExternalUrl){window.StreamHubAndroid.openExternalUrl(this.href);return false;}" style="display:none;margin-top:8px;text-align:center;font-size:0.76rem;color:var(--text-muted);text-decoration:underline;">Open APK Link in Browser</a>
                 </div>
             </div>
 
             <details class="settings-card">
-                <summary style="cursor:pointer;font-size:0.78rem;color:#cbd5e1;font-weight:700;">Advanced: Update Source (GitHub Repo / URL)</summary>
+                <summary style="cursor:pointer;font-size:0.78rem;color:var(--text-muted);font-weight:600;">Advanced: Update Source (GitHub Repo / URL)</summary>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-                    <input type="text" id="updateFeedInput" class="input-control" style="flex:1 1 200px;min-width:0;background:#0b0e17;border:1px solid var(--border-strong);color:#fff;border-radius:9px;padding:8px 10px;font-size:0.82rem;outline:none;" placeholder="e.g. khushal-jangid/streamhub">
+                    <input type="text" id="updateFeedInput" class="input-control" style="flex:1 1 200px;min-width:0;background:var(--bg);border:1px solid var(--border-strong);color:#fff;border-radius:8px;padding:8px 10px;font-size:0.82rem;outline:none;" placeholder="e.g. khushal-jangid/streamhub">
                     <button type="button" id="btnCheckNow" class="btn-sm btn-indigo-sm" onclick="saveUpdateFeedAndCheck()">Save &amp; Check</button>
                 </div>
             </details>
@@ -6143,14 +6142,16 @@ html, body { max-width: 100%; overflow-x: hidden; }
     <div class="settings-dialog">
         <div class="settings-head">
             <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
-                <button type="button" class="btn-sm btn-copy-sm" onclick="closeDownloadsModal()">← Back</button>
+                <button type="button" class="btn-sm btn-copy-sm" onclick="closeDownloadsModal()">Back</button>
                 <div style="min-width:0;">
-                    <h2 id="downloadsModalTitle" style="font-size:1.05rem;font-weight:900;color:#fff;">📥 My Downloads</h2>
-                    <div style="font-size:0.7rem;color:#6ee7b7;margin-top:1px;">🔒 Private App Storage • Bina net ke play karein</div>
+                    <h2 id="downloadsModalTitle" style="font-size:1rem;font-weight:700;color:#fff;">My Downloads</h2>
+                    <div style="font-size:0.7rem;color:#86efac;margin-top:1px;">Private App Storage • Offline Playback</div>
                 </div>
             </div>
             <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
-                <button type="button" class="btn-sm btn-copy-sm" onclick="openSettingsSubPage('dlSettingsPageModal');" title="Storage Limit &amp; Auto-Delete Settings">⚙️</button>
+                <button type="button" class="btn-sm btn-copy-sm" onclick="openSettingsSubPage('dlSettingsPageModal');" title="Storage Limit &amp; Auto-Delete Settings" aria-label="Download storage settings">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                </button>
                 <button class="btn-close-card" onclick="closeAllSettingsPages()" aria-label="Close downloads">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
@@ -6158,9 +6159,9 @@ html, body { max-width: 100%; overflow-x: hidden; }
         </div>
         <div class="settings-body">
             <div class="settings-card" style="padding:12px 14px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:0.77rem;font-weight:700;color:#e2e8f0;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:0.76rem;font-weight:600;color:var(--text);">
                     <span id="dlModalStorageText">Used: 0 MB / 4 GB Limit</span>
-                    <span id="dlModalPolicyText" style="color:#94a3b8;font-size:0.71rem;">Auto-Delete Watched: ON • Expire: 7d</span>
+                    <span id="dlModalPolicyText" style="color:var(--text-muted);font-size:0.71rem;">Auto-Delete Watched: ON • Expire: 7d</span>
                 </div>
                 <div class="storage-bar-track"><div class="storage-bar-fill" id="dlModalStorageFill"></div></div>
             </div>
@@ -6176,8 +6177,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
             <div style="display:flex;gap:11px;align-items:center;min-width:0;">
                 <img id="dlPickerPoster" src="" alt="" style="width:46px;height:66px;border-radius:8px;object-fit:cover;background:var(--surface-2);display:none;flex-shrink:0;">
                 <div style="min-width:0;">
-                    <div style="font-size:0.7rem;font-weight:800;color:var(--accent);text-transform:uppercase;letter-spacing:0.6px;">Private Offline Download</div>
-                    <h2 id="dlPickerTitle" style="font-size:0.98rem;font-weight:900;color:#fff;line-height:1.25;">Movie Title</h2>
+                    <div style="font-size:0.68rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.6px;">Offline Download</div>
+                    <h2 id="dlPickerTitle" style="font-size:0.96rem;font-weight:700;color:#fff;line-height:1.25;">Movie Title</h2>
                     <div id="dlPickerSub" style="font-size:0.72rem;color:var(--text-muted);margin-top:2px;">Low storage usage + Gallery hidden</div>
                 </div>
             </div>
@@ -6187,22 +6188,60 @@ html, body { max-width: 100%; overflow-x: hidden; }
         </div>
 
         <div style="margin-bottom:12px;">
-            <div style="font-size:0.76rem;font-weight:800;color:var(--text-muted);margin-bottom:7px;">1. Select Video Quality (480p/720p saves space)</div>
+            <div style="font-size:0.75rem;font-weight:700;color:var(--text-muted);margin-bottom:7px;">1. Select Video Quality (480p/720p saves space)</div>
             <div id="dlPickerQualities" style="display:flex;flex-direction:column;gap:7px;max-height:210px;overflow-y:auto;"></div>
         </div>
 
         <div style="margin-bottom:14px;">
-            <div style="font-size:0.76rem;font-weight:800;color:var(--text-muted);margin-bottom:7px;">2. Preferred Audio Language</div>
+            <div style="font-size:0.75rem;font-weight:700;color:var(--text-muted);margin-bottom:7px;">2. Preferred Audio Language</div>
             <div id="dlPickerLangs" style="display:flex;gap:7px;flex-wrap:wrap;"></div>
         </div>
 
-        <div id="dlPickerStorageHint" style="font-size:0.73rem;color:#94a3b8;background:#070910;border:1px solid var(--border);border-radius:10px;padding:9px 11px;margin-bottom:12px;">
-            🔒 Saves inside private app storage only • Auto-cleans when watched
+        <div id="dlPickerStorageHint" style="font-size:0.73rem;color:var(--text-muted);background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:12px;">
+            Saves inside private app storage only • Auto-cleans when watched
         </div>
 
-        <button type="button" id="btnStartDownloadConfirm" class="vlc-banner" style="min-height:46px;font-size:0.92rem;justify-content:center;" onclick="confirmStartDownload()">
-            ⬇ Start Private Download
+        <button type="button" id="btnStartDownloadConfirm" class="vlc-banner" style="min-height:44px;font-size:0.9rem;justify-content:center;" onclick="confirmStartDownload()">
+            Start Private Download
         </button>
+    </div>
+</div>
+
+<!-- Startup Update Available Popup -->
+<div class="modal-overlay" id="startupUpdateModal" onclick="if(event.target===this) closeStartupUpdateModal(true)" role="dialog" aria-modal="true" aria-labelledby="startupUpdTitle" style="z-index:160;">
+    <div class="startup-update-card">
+        <div class="startup-update-head">
+            <div style="display:flex;align-items:center;gap:11px;min-width:0;">
+                <span class="startup-update-ico">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                </span>
+                <div style="min-width:0;">
+                    <div style="font-size:0.68rem;font-weight:700;color:var(--netflix);letter-spacing:0.7px;text-transform:uppercase;">Update Available</div>
+                    <h2 id="startupUpdTitle" style="font-size:1rem;font-weight:800;color:#fff;line-height:1.25;">New StreamHub Release</h2>
+                </div>
+            </div>
+            <button class="btn-close-card" onclick="closeStartupUpdateModal(true)" aria-label="Dismiss update popup">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+
+        <div class="startup-ver-row">
+            <span class="startup-ver-pill" id="startupUpdOldVer">v2.5.3</span>
+            <span style="color:var(--text-muted);">-&gt;</span>
+            <span class="startup-ver-pill new" id="startupUpdNewVer">v2.5.4</span>
+        </div>
+
+        <div class="startup-update-notes" id="startupUpdNotes">New improvements and bug fixes ready to install.</div>
+
+        <div id="startupUpdProgWrap" style="display:none;background:var(--surface-2);border-radius:999px;height:6px;overflow:hidden;margin-bottom:10px;">
+            <div id="startupUpdProgFill" style="height:100%;width:0%;background:var(--netflix);transition:width 0.25s;"></div>
+        </div>
+        <div id="startupUpdStatus" style="display:none;font-size:0.74rem;color:var(--text-muted);margin-bottom:10px;"></div>
+
+        <div class="startup-update-actions">
+            <button type="button" id="btnStartupUpdateNow" class="vlc-banner" style="flex:1 1 170px;min-height:42px;font-size:0.86rem;" onclick="triggerStartupUpdateNow()">Update Now</button>
+            <button type="button" class="btn-sm btn-copy-sm" style="min-height:42px;padding:0 14px;font-size:0.82rem;" onclick="closeStartupUpdateModal(true)">Later</button>
+        </div>
     </div>
 </div>
 
@@ -6210,26 +6249,26 @@ html, body { max-width: 100%; overflow-x: hidden; }
 <nav class="mobile-dock" aria-label="Mobile quick navigation">
     <div class="mobile-dock-grid">
         <button class="dock-btn active" onclick="scrollToEl('heroSpotlight')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
             <span>Home</span>
         </button>
         <button class="dock-btn" onclick="scrollToEl('browseSection')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
             <span>Catalog</span>
         </button>
         <button class="dock-btn" id="dockBtnDownloads" onclick="openDownloadsModal()" style="position:relative;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             <span>Downloads</span>
             <span class="nav-dl-badge" id="dockDownloadsBadge" style="display:none;position:absolute;top:2px;right:10px;min-width:16px;height:16px;font-size:0.6rem;">0</span>
         </button>
         <button class="dock-btn" id="dockBtnRemote" onclick="isAndroidApp() ? jumpCategory('hollywood-movies') : openRemoteModal()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3"/><circle cx="12" cy="9" r="2"/><line x1="10" y1="15" x2="14" y2="15"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
             <span id="dockLblRemote">Remote</span>
         </button>
         <button class="dock-btn" id="dockBtnQr" onclick="isAndroidApp() ? openSettingsModal() : openQrModal()" style="position:relative;">
-            <svg id="dockIconQr" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3z"/><path d="M20 14v7h-7"/></svg>
+            <svg id="dockIconQr" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3z"/><path d="M20 14v7h-7"/></svg>
             <span id="dockLblQr">QR</span>
-            <span id="dockSettingsDot" style="display:none;position:absolute;top:4px;right:14px;width:7px;height:7px;border-radius:50%;background:#e50914;"></span>
+            <span id="dockSettingsDot" style="display:none;position:absolute;top:4px;right:14px;width:6px;height:6px;border-radius:50%;background:var(--netflix);"></span>
         </button>
     </div>
 </nav>
@@ -6237,14 +6276,16 @@ html, body { max-width: 100%; overflow-x: hidden; }
 <!-- Live In-App Download Progress Notification Banner -->
 <div class="live-dl-banner" id="liveDownloadBanner" role="status" aria-live="polite">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-        <div id="liveDlTitle" style="font-size:0.8rem;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;">Downloading...</div>
-        <button type="button" onclick="hideLiveDownloadBanner()" style="background:transparent;border:none;color:#94a3b8;font-size:0.9rem;font-weight:900;cursor:pointer;padding:2px 6px;" title="Minimize notification">✕</button>
+        <div id="liveDlTitle" style="font-size:0.79rem;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;">Downloading...</div>
+        <button type="button" onclick="hideLiveDownloadBanner()" style="background:transparent;border:none;color:var(--text-muted);cursor:pointer;padding:2px 4px;display:grid;place-items:center;" title="Minimize notification" aria-label="Minimize">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
     </div>
-    <div class="storage-bar-track" style="height:6px;margin:7px 0 5px;"><div class="storage-bar-fill" id="liveDlProgFill"></div></div>
+    <div class="storage-bar-track" style="height:5px;margin:7px 0 5px;"><div class="storage-bar-fill" id="liveDlProgFill"></div></div>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-        <div id="liveDlMeta" style="font-size:0.71rem;color:#cbd5e1;font-weight:700;">0% • 0 MB</div>
+        <div id="liveDlMeta" style="font-size:0.71rem;color:var(--text-muted);font-weight:600;">0% • 0 MB</div>
         <div style="display:flex;gap:6px;">
-            <button type="button" id="liveDlToggleBtn" class="btn-sm btn-indigo-sm" style="padding:4px 9px;font-size:0.7rem;" onclick="toggleLiveDownloadPause()">⏸ Pause</button>
+            <button type="button" id="liveDlToggleBtn" class="btn-sm btn-indigo-sm" style="padding:4px 9px;font-size:0.7rem;" onclick="toggleLiveDownloadPause()">Pause</button>
             <button type="button" class="btn-sm btn-vlc-sm" style="padding:4px 9px;font-size:0.7rem;" onclick="openDownloadsModal()">View</button>
         </div>
     </div>
@@ -6272,11 +6313,30 @@ html, body { max-width: 100%; overflow-x: hidden; }
     let activeResolvedMirrors = [];
     let currentDetailsQualities = [];
     let userSettingsState = {
-        profile: { name: "StreamHub User", avatar: "🎬", preferred_language: "Auto" },
+        profile: { name: "StreamHub User", avatar: "film", preferred_language: "Auto" },
         theme: "netflix",
         download_prefs: { storage_limit_gb: 4, auto_delete_watched: true, auto_expire_days: 7, default_quality: "720p" },
         storage: { used_bytes: 0, limit_gb: 4, limit_bytes: 4294967296, active_count: 0, completed_count: 0, paused_count: 0, total_count: 0 }
     };
+    let startupPopupShownForVer = "";
+    const _SH_ICONS = {
+        download: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+        play: '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"/></svg>',
+        pause: '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>',
+        trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+        close: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+        film: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>',
+        tv: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>',
+        star: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+        compass: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>',
+        shield: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+        user: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>'
+    };
+    const _LEGACY_AV_MAP = { '🎬': 'film', '🍿': 'tv', '🔥': 'star', '👑': 'shield', '🦁': 'compass', '⚡': 'user' };
+    function _shAvatarSvg(av) {
+        const key = _LEGACY_AV_MAP[av] || av;
+        return _SH_ICONS[key] || _SH_ICONS.film;
+    }
     let offlineDownloadsList = [];
     let offlinePollTimer = null;
     let lastWakeLockActive = null;
@@ -6375,11 +6435,12 @@ html, body { max-width: 100%; overflow-x: hidden; }
     }
 
     window.__shAndroidHandleBack = function() {
-        const modals = ['downloadPickerModal', 'inlineWebPlayerModal', 'trailerModalOverlay', 'qrModalOverlay', 'remoteModalOverlay', 'profilePageModal', 'themePageModal', 'dlSettingsPageModal', 'toolsPageModal', 'updateModalOverlay', 'downloadsModalOverlay', 'settingsModalOverlay'];
+        const modals = ['startupUpdateModal', 'downloadPickerModal', 'inlineWebPlayerModal', 'trailerModalOverlay', 'qrModalOverlay', 'remoteModalOverlay', 'profilePageModal', 'themePageModal', 'dlSettingsPageModal', 'toolsPageModal', 'updateModalOverlay', 'downloadsModalOverlay', 'settingsModalOverlay'];
         for (const id of modals) {
             const el = document.getElementById(id);
             if (el && el.classList.contains('open')) {
-                if (id === 'downloadPickerModal') closeDownloadPicker();
+                if (id === 'startupUpdateModal') closeStartupUpdateModal(true);
+                else if (id === 'downloadPickerModal') closeDownloadPicker();
                 else if (id === 'inlineWebPlayerModal') closeInlinePlayer();
                 else if (id === 'trailerModalOverlay') closeTrailerModal();
                 else if (id === 'qrModalOverlay') closeQrModal();
@@ -6668,7 +6729,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 ? `<div class="card-progress-track"><div class="card-progress-fill" style="width:${Math.min(100, pct)}%"></div></div>`
                 : '';
             const rTag = (pct > 1 && pct < 95 && prog.position_sec >= 10)
-                ? `<span class="resume-pill">▶ ${esc(fmtResumeShort(prog.position_sec))}</span>`
+                ? `<span class="resume-pill">${esc(fmtResumeShort(prog.position_sec))}</span>`
                 : '';
             const thumb = item.thumbnail
                 ? `<img class="shelf-poster" src="${esc(item.thumbnail)}" alt="${esc(item.title)}" loading="lazy">`
@@ -6721,6 +6782,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
     window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             dismissIntro();
+            closeStartupUpdateModal(true);
             closeTrailerModal();
             closeQrModal();
             closeRemoteModal();
@@ -6922,19 +6984,19 @@ html, body { max-width: 100%; overflow-x: hidden; }
         const prog = getProgressForItem(m);
         const pct = prog ? Number(prog.pct || 0) : 0;
         const resumeBadge = (pct > 1 && pct < 95 && prog.position_sec >= 10)
-            ? `<span class="resume-pill">▶ Resume ${esc(fmtResumeShort(prog.position_sec))}</span>`
+            ? `<span class="resume-pill">Resume ${esc(fmtResumeShort(prog.position_sec))}</span>`
             : (watched || pct >= 95 ? '<span class="watched-pill">Watched</span>' : '');
         const progBar = pct > 1
             ? `<div class="card-progress-track"><div class="card-progress-fill" style="width:${Math.min(100, pct)}%"></div></div>`
             : '';
         const rInfo = ratingsMap[m.permalink] || (m.imdb_id ? ratingsMap[m.imdb_id] : null);
-        const rBadge = (rInfo && rInfo.rating) ? `<span class="imdb-mini">★ ${rInfo.rating}</span>` : '';
+        const rBadge = (rInfo && rInfo.rating) ? `<span class="imdb-mini">IMDb ${rInfo.rating}</span>` : '';
 
         card.innerHTML = `
             <div class="poster-wrap">
                 <img src="${esc(m.thumbnail || '')}" alt="${esc(titleTxt)}" loading="lazy">
                 <div class="poster-shade"></div>
-                <span class="card-tag-left"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>${esc(qTag)}</span>
+                <span class="card-tag-left">${esc(qTag)}</span>
                 ${m.is_series ? '<span class="card-tag-right">SERIES</span>' : ''}
                 ${resumeBadge}
                 ${progBar}
@@ -7376,7 +7438,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         }
         let hasStrip = false;
         if (meta.imdb_rating) {
-            imdb.textContent = 'IMDb ★ ' + meta.imdb_rating;
+            imdb.textContent = 'IMDb ' + meta.imdb_rating;
             imdb.href = meta.imdb_url || '#';
             imdb.style.display = 'inline-flex';
             hasStrip = true;
@@ -7492,7 +7554,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                     <div class="ep-meta">${ep.size ? 'Size: ' + esc(ep.size) : 'HD / 4K Stream'}</div>
                 </div>
                 <div class="ep-actions">
-                    <button class="btn-sm btn-copy-sm" onclick="openDownloadPickerForEpisode(${idx}, ${epIdx})" title="Download Offline">⬇</button>
+                    <button class="btn-sm btn-copy-sm" onclick="openDownloadPickerForEpisode(${idx}, ${epIdx})" title="Download Offline" aria-label="Download Offline">${_SH_ICONS.download}</button>
                     <button class="btn-sm btn-vlc-sm" onclick="pickSeriesLink('${encodeURIComponent(ep.link)}', ${idx}, ${epIdx})">Stream Episode</button>
                 </div>
             `;
@@ -7714,10 +7776,10 @@ html, body { max-width: 100%; overflow-x: hidden; }
         const rSec = getActiveResumeSec();
         if (rSec >= 10) {
             mainTxt.textContent = isAndroidApp()
-                ? `▶ Resume (${fmtResumeShort(rSec)}) in Cinema Player`
+                ? `Resume (${fmtResumeShort(rSec)}) in Cinema Player`
                 : (isMobileDevice()
-                    ? `▶ Resume (${fmtResumeShort(rSec)}) in Phone VLC`
-                    : `▶ Resume (${fmtResumeShort(rSec)}) in In-Built Player`);
+                    ? `Resume (${fmtResumeShort(rSec)}) in Phone VLC`
+                    : `Resume (${fmtResumeShort(rSec)}) in In-Built Player`);
             if (startOverBtn) startOverBtn.style.display = (!isAndroidApp() && isMobileDevice()) ? 'none' : 'inline-flex';
         } else {
             mainTxt.textContent = isAndroidApp()
@@ -8002,7 +8064,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                         <div class="ep-meta">${esc(ep.size)} &bull; ${seekTag}</div>
                     </div>
                     <div class="ep-actions">
-                        <button class="btn-sm btn-copy-sm" onclick="openDownloadPickerForZipEp(${i})" title="Download Episode Offline">⬇</button>
+                        <button class="btn-sm btn-copy-sm" onclick="openDownloadPickerForZipEp(${i})" title="Download Episode Offline" aria-label="Download Episode Offline">${_SH_ICONS.download}</button>
                         <button class="btn-sm btn-vlc-sm" onclick="playZipEntry(${i})">${playLbl}</button>
                         <a class="btn-sm btn-copy-sm" target="_blank" href="${esc(ep.watch_online_url)}">Web</a>
                     </div>
@@ -8199,7 +8261,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
 
         vid.onerror = () => {
             if (activeCompressMethod !== -1) {
-                note.textContent = '⚠ Browser HEVC/Dolby MKV play nahi kar sakta — "Play in StreamHub In-Built Player" use karein!';
+                note.textContent = 'Browser HEVC/Dolby MKV play nahi kar sakta — "Play in StreamHub In-Built Player" use karein.';
                 showToast('In-Built Player me chalayein (4K HEVC/Dolby support)', 'err');
             }
         };
@@ -8602,15 +8664,14 @@ html, body { max-width: 100%; overflow-x: hidden; }
 
     function applyProfileUi(profile) {
         const p = profile || {};
-        const av = p.avatar || '🎬';
+        const rawAv = p.avatar || 'film';
+        const av = _LEGACY_AV_MAP[rawAv] || (_SH_ICONS[rawAv] ? rawAv : 'film');
         const nm = p.name || 'StreamHub User';
         const lg = p.preferred_language || 'Auto';
-        const navAv = document.getElementById('navProfileAvatar');
-        if (navAv) navAv.textContent = av;
         const hdAv = document.getElementById('settingsHeadAvatar');
-        if (hdAv) hdAv.textContent = av;
+        if (hdAv) hdAv.innerHTML = _shAvatarSvg(av);
         const hdSub = document.getElementById('settingsHeadSub');
-        if (hdSub) hdSub.textContent = `${nm} • Audio: ${lg} • v${userSettingsState.version || '2.5.1'}`;
+        if (hdSub) hdSub.textContent = `${nm} • Audio: ${lg} • v${userSettingsState.version || '2.5.4'}`;
         const mProf = document.getElementById('menuSubProfile');
         if (mProf) mProf.textContent = `${nm} • Audio: ${lg}`;
         const nmInp = document.getElementById('setProfileName');
@@ -8684,7 +8745,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         const mMyDl = document.getElementById('menuSubMyDownloads');
         if (mMyDl) {
             mMyDl.textContent = (activeCnt > 0 && actItem)
-                ? `⬇ Downloading ${Math.round(actItem.pct || 0)}% (${fmtBytes(actItem.downloaded_bytes)})`
+                ? `Downloading ${Math.round(actItem.pct || 0)}% (${fmtBytes(actItem.downloaded_bytes)})`
                 : `${s.completed_count || 0} Ready • ${s.paused_count || 0} Paused`;
         }
 
@@ -8813,7 +8874,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         const activeAv = document.querySelector('#avatarPickerGrid .avatar-chip.active');
         const profPayload = {
             name: nmInp ? nmInp.value.trim() : 'StreamHub User',
-            avatar: activeAv ? activeAv.getAttribute('data-av') : '🎬',
+            avatar: activeAv ? activeAv.getAttribute('data-av') : 'film',
             preferred_language: lgSel ? lgSel.value : 'Auto'
         };
         try {
@@ -8965,7 +9026,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         const limLabel = Number(dp.storage_limit_gb) > 0 ? `${dp.storage_limit_gb} GB` : 'Unlimited';
         const hintEl = document.getElementById('dlPickerStorageHint');
         if (hintEl) {
-            hintEl.textContent = `🔒 Private App Storage: ${fmtBytes(st.used_bytes || 0)} / ${limLabel} used • Gallery/Files se hidden${dp.auto_delete_watched ? ' • Watched hone par auto-delete' : ''}`;
+            hintEl.textContent = `Private App Storage: ${fmtBytes(st.used_bytes || 0)} / ${limLabel} used • Gallery/Files se hidden${dp.auto_delete_watched ? ' • Watched hone par auto-delete' : ''}`;
         }
         const ov = document.getElementById('downloadPickerModal');
         if (ov) ov.classList.add('open');
@@ -9190,10 +9251,10 @@ html, body { max-width: 100%; overflow-x: hidden; }
         const fillEl = document.getElementById('liveDlProgFill');
         const metaEl = document.getElementById('liveDlMeta');
         const togBtn = document.getElementById('liveDlToggleBtn');
-        if (ttlEl) ttlEl.textContent = (cur.status === 'downloading' ? '⬇ Downloading: ' : (cur.status === 'queued' ? '⏳ Connecting: ' : '⏸ Paused: ')) + cur.title;
+        if (ttlEl) ttlEl.textContent = (cur.status === 'downloading' ? 'Downloading: ' : (cur.status === 'queued' ? 'Connecting: ' : 'Paused: ')) + cur.title;
         if (fillEl) fillEl.style.width = Math.min(100, Math.max(0, pct)) + '%';
         if (metaEl) metaEl.textContent = `${pct.toFixed(1)}% • ${dlStr} / ${totStr}${spd > 0 ? ' • ' + fmtBytes(spd) + '/s' : ''}${etaStr}`;
-        if (togBtn) togBtn.textContent = (cur.status === 'downloading' || cur.status === 'queued') ? '⏸ Pause' : '▶ Resume';
+        if (togBtn) togBtn.textContent = (cur.status === 'downloading' || cur.status === 'queued') ? 'Pause' : 'Resume';
         b.classList.add('show');
     }
 
@@ -9241,7 +9302,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         } catch (e) {
             showToast('Download request error: ' + e.message, 'err');
         } finally {
-            if (btn) { btn.disabled = false; btn.textContent = '⬇ Start Private Download'; }
+            if (btn) { btn.disabled = false; btn.textContent = 'Start Private Download'; }
         }
     }
 
@@ -9298,10 +9359,12 @@ html, body { max-width: 100%; overflow-x: hidden; }
         const wrap = document.getElementById('downloadsListWrap');
         if (!wrap) return;
         if (!offlineDownloadsList.length) {
-            wrap.innerHTML = `<div class="settings-card" style="text-align:center;padding:28px 16px;">
-                <div style="font-size:2rem;margin-bottom:8px;">📥</div>
-                <div style="font-size:0.95rem;font-weight:800;color:#fff;margin-bottom:4px;">Koi Offline Movie Nahi Hai</div>
-                <div style="font-size:0.78rem;color:var(--text-muted);line-height:1.45;">Kisi bhi movie ya web series par jakar <b>⬇ Download</b> button dabayein — bina net ke kabhi bhi dekhein!</div>
+            wrap.innerHTML = `<div class="settings-card" style="text-align:center;padding:32px 16px;">
+                <div style="width:48px;height:48px;margin:0 auto 12px;border-radius:12px;background:var(--surface-2);border:1px solid var(--border);display:grid;place-items:center;color:var(--text-muted);">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                </div>
+                <div style="font-size:0.95rem;font-weight:700;color:#fff;margin-bottom:4px;">No Offline Downloads</div>
+                <div style="font-size:0.78rem;color:var(--text-muted);line-height:1.45;">Kisi bhi movie ya web series par jakar <b>Download</b> button dabayein — bina internet ke offline dekhein.</div>
             </div>`;
             return;
         }
@@ -9318,28 +9381,28 @@ html, body { max-width: 100%; overflow-x: hidden; }
             if (st === 'completed') {
                 const expTxt = (item.expires_in_days !== null && item.expires_in_days !== undefined) ? ` • ${item.expires_in_days}d left` : '';
                 const watchTxt = Number(item.last_watched_pct || 0) >= 5 ? ` • Watched ${Math.round(item.last_watched_pct)}%` : '';
-                statusLine = `<span style="color:#6ee7b7;font-weight:700;">Ready Offline (${fmtBytes(item.total_bytes || item.downloaded_bytes)})</span>${watchTxt}${expTxt}`;
+                statusLine = `<span style="color:#86efac;font-weight:600;">Ready Offline (${fmtBytes(item.total_bytes || item.downloaded_bytes)})</span>${watchTxt}${expTxt}`;
                 actionsHtml = `
-                    <button type="button" class="btn-sm btn-vlc-sm" onclick="playOfflineDownload('${esc(item.id)}')">▶ Play Offline</button>
-                    <button type="button" class="btn-sm btn-copy-sm" onclick="downloadAction('${esc(item.id)}','delete')">🗑️</button>
+                    <button type="button" class="btn-sm btn-vlc-sm" onclick="playOfflineDownload('${esc(item.id)}')">${_SH_ICONS.play} Play Offline</button>
+                    <button type="button" class="btn-sm btn-copy-sm" onclick="downloadAction('${esc(item.id)}','delete')" aria-label="Delete">${_SH_ICONS.trash}</button>
                 `;
             } else if (st === 'downloading' || st === 'queued') {
-                statusLine = `<span style="color:#93c5fd;font-weight:700;">${st === 'queued' ? 'Connecting...' : `Downloading ${pct.toFixed(1)}%`}</span> • ${fmtBytes(item.downloaded_bytes)} / ${item.total_bytes > 0 ? fmtBytes(item.total_bytes) : '...'}${spdTxt}`;
+                statusLine = `<span style="color:#93c5fd;font-weight:600;">${st === 'queued' ? 'Connecting...' : `Downloading ${pct.toFixed(1)}%`}</span> • ${fmtBytes(item.downloaded_bytes)} / ${item.total_bytes > 0 ? fmtBytes(item.total_bytes) : '...'}${spdTxt}`;
                 actionsHtml = `
-                    <button type="button" class="btn-sm btn-indigo-sm" onclick="downloadAction('${esc(item.id)}','pause')">⏸ Pause</button>
-                    <button type="button" class="btn-sm btn-copy-sm" onclick="downloadAction('${esc(item.id)}','delete')">✕</button>
+                    <button type="button" class="btn-sm btn-indigo-sm" onclick="downloadAction('${esc(item.id)}','pause')">${_SH_ICONS.pause} Pause</button>
+                    <button type="button" class="btn-sm btn-copy-sm" onclick="downloadAction('${esc(item.id)}','delete')" aria-label="Cancel">${_SH_ICONS.close}</button>
                 `;
             } else {
                 const isErr = st === 'error';
-                statusLine = `<span style="color:${isErr ? '#fca5a5' : '#fde68a'};font-weight:700;">${isErr ? 'Error' : 'Paused'} (${pct.toFixed(1)}%)</span> • ${fmtBytes(item.downloaded_bytes)}${item.error ? ' — ' + esc(item.error) : ''}`;
+                statusLine = `<span style="color:${isErr ? '#fca5a5' : '#fde68a'};font-weight:600;">${isErr ? 'Error' : 'Paused'} (${pct.toFixed(1)}%)</span> • ${fmtBytes(item.downloaded_bytes)}${item.error ? ' — ' + esc(item.error) : ''}`;
                 actionsHtml = `
-                    <button type="button" class="btn-sm btn-vlc-sm" onclick="downloadAction('${esc(item.id)}','resume')">▶ Resume</button>
-                    <button type="button" class="btn-sm btn-copy-sm" onclick="downloadAction('${esc(item.id)}','delete')">🗑️</button>
+                    <button type="button" class="btn-sm btn-vlc-sm" onclick="downloadAction('${esc(item.id)}','resume')">${_SH_ICONS.play} Resume</button>
+                    <button type="button" class="btn-sm btn-copy-sm" onclick="downloadAction('${esc(item.id)}','delete')" aria-label="Delete">${_SH_ICONS.trash}</button>
                 `;
             }
             const imgHtml = item.poster
                 ? `<img class="dl-poster" src="${esc(item.poster)}" alt="">`
-                : `<div class="dl-poster" style="display:grid;place-items:center;font-size:1.3rem;">🎬</div>`;
+                : `<div class="dl-poster" style="display:grid;place-items:center;color:var(--text-muted);">${_SH_ICONS.film}</div>`;
             const progBar = (st !== 'completed')
                 ? `<div class="storage-bar-track" style="height:6px;margin:7px 0;"><div class="storage-bar-fill" style="width:${pct}%"></div></div>`
                 : '';
@@ -9432,6 +9495,68 @@ html, body { max-width: 100%; overflow-x: hidden; }
     let pendingUpdateInfo = null;
     let updatePollTimer = null;
 
+    function openStartupUpdatePopup(data) {
+        if (!data || !data.update_available) return;
+        const lv = String(data.latest_version || '');
+        if (lv && startupPopupShownForVer === lv) return;
+        const anySubOpen = SH_FULL_PAGES.some(id => {
+            const el = document.getElementById(id);
+            return el && el.classList.contains('open');
+        });
+        if (anySubOpen) return;
+        pendingUpdateInfo = data;
+        startupPopupShownForVer = lv;
+        dismissIntro();
+
+        const ov = document.getElementById('startupUpdateModal');
+        const oldV = document.getElementById('startupUpdOldVer');
+        const newV = document.getElementById('startupUpdNewVer');
+        const notes = document.getElementById('startupUpdNotes');
+        const btn = document.getElementById('btnStartupUpdateNow');
+        const pw = document.getElementById('startupUpdProgWrap');
+        const pf = document.getElementById('startupUpdProgFill');
+        const stEl = document.getElementById('startupUpdStatus');
+
+        if (oldV) oldV.textContent = 'v' + (data.version || '2.5.4');
+        if (newV) newV.textContent = 'v' + (lv || 'Latest');
+        if (notes) notes.textContent = data.notes || `StreamHub v${lv} update available.`;
+        if (pw) pw.style.display = 'none';
+        if (pf) pf.style.width = '0%';
+        if (stEl) { stEl.style.display = 'none'; stEl.textContent = ''; }
+        if (btn) {
+            btn.disabled = false;
+            const useOta = isAndroidApp() && data.ota_supported && data.py_download_url;
+            btn.textContent = useOta ? `Instant Update v${lv}` : `Update to v${lv}`;
+        }
+        if (ov) ov.classList.add('open');
+    }
+
+    function closeStartupUpdateModal(remember) {
+        if (remember && pendingUpdateInfo && pendingUpdateInfo.latest_version) {
+            startupPopupShownForVer = String(pendingUpdateInfo.latest_version);
+        }
+        const ov = document.getElementById('startupUpdateModal');
+        if (ov) ov.classList.remove('open');
+    }
+
+    function triggerStartupUpdateNow() {
+        if (!pendingUpdateInfo) return;
+        const onAndroid = isAndroidApp();
+        if (onAndroid && pendingUpdateInfo.ota_supported && pendingUpdateInfo.py_download_url) {
+            applyOtaPyUpdateNow(true);
+            return;
+        }
+        if (onAndroid && pendingUpdateInfo.apk_download_url) {
+            applyAndroidApkUpdateNow();
+            return;
+        }
+        closeStartupUpdateModal(false);
+        openUpdateModal(false);
+        if (!onAndroid && pendingUpdateInfo.download_url) {
+            setTimeout(() => applyAppUpdateNow(), 180);
+        }
+    }
+
     function openUpdateModal(fromSettings) {
         dismissIntro();
         const ov = document.getElementById('updateModalOverlay');
@@ -9492,7 +9617,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         if (otaBtn) {
             if (onAndroid && data.update_available && data.ota_supported && data.py_download_url) {
                 otaBtn.disabled = false;
-                otaBtn.textContent = `⚡ Instant Update v${data.latest_version || ''} (~0.5 MB)`;
+                otaBtn.textContent = `Instant Update v${data.latest_version || ''} (~0.7 MB)`;
                 otaBtn.style.display = 'block';
             } else {
                 otaBtn.style.display = 'none';
@@ -9502,8 +9627,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
             if (onAndroid && data.update_available && data.apk_download_url) {
                 apkBtn.disabled = false;
                 apkBtn.textContent = data.ota_supported
-                    ? `📱 Or Download Full APK v${data.latest_version || ''}`
-                    : `📱 Download & Install APK v${data.latest_version || ''}`;
+                    ? `Download Full APK v${data.latest_version || ''}`
+                    : `Download & Install APK v${data.latest_version || ''}`;
                 apkBtn.style.display = 'block';
                 if (data.ota_supported) {
                     apkBtn.className = 'btn-sm btn-copy-sm';
@@ -9538,36 +9663,59 @@ html, body { max-width: 100%; overflow-x: hidden; }
         const fill = document.getElementById('updateProgFill');
         const box = document.getElementById('updateStatusBox');
         const apkBtn = document.getElementById('btnApkUpdate');
+        const spWrap = document.getElementById('startupUpdProgWrap');
+        const spFill = document.getElementById('startupUpdProgFill');
+        const spSt = document.getElementById('startupUpdStatus');
+        const spBtn = document.getElementById('btnStartupUpdateNow');
         if (wrap) wrap.style.display = 'block';
         if (fill && typeof pct === 'number') fill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+        if (spWrap) spWrap.style.display = 'block';
+        if (spFill && typeof pct === 'number') spFill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
         if (box && msg) {
-            box.style.color = state === 'error' ? '#fca5a5' : '#6ee7b7';
+            box.style.color = state === 'error' ? '#fca5a5' : '#86efac';
             box.textContent = msg;
         }
+        if (spSt && msg) {
+            spSt.style.display = 'block';
+            spSt.style.color = state === 'error' ? '#fca5a5' : '#86efac';
+            spSt.textContent = msg;
+        }
+        const ver = (pendingUpdateInfo && pendingUpdateInfo.latest_version) || '';
         if (apkBtn) {
             if (state === 'downloading') {
                 apkBtn.disabled = true;
                 apkBtn.textContent = `Downloading APK ${pct || 0}%...`;
             } else if (state === 'error' || state === 'need_permission' || state === 'installer_opened') {
                 apkBtn.disabled = false;
-                const ver = (pendingUpdateInfo && pendingUpdateInfo.latest_version) || '';
                 apkBtn.textContent = state === 'need_permission'
                     ? `Permission dene ke baad tap karein (v${ver})`
-                    : `📱 Download & Install APK v${ver}`;
+                    : `Download & Install APK v${ver}`;
+            }
+        }
+        if (spBtn) {
+            if (state === 'downloading') {
+                spBtn.disabled = true;
+                spBtn.textContent = `Downloading ${pct || 0}%...`;
+            } else if (state === 'error' || state === 'need_permission' || state === 'installer_opened') {
+                spBtn.disabled = false;
+                spBtn.textContent = state === 'need_permission'
+                    ? `Allow Permission & Install v${ver}`
+                    : `Install v${ver}`;
             }
         }
         if (state === 'error' && msg) showToast(msg, 'err');
         if (state === 'need_permission') showToast('Allow "Install unknown apps", phir Install tap karein', 'ok');
     };
 
-    async function applyOtaPyUpdateNow() {
+    async function applyOtaPyUpdateNow(fromPopup) {
         if (!pendingUpdateInfo || !pendingUpdateInfo.py_download_url) return;
-        const btn = document.getElementById('btnOtaPyUpdate');
-        const wrap = document.getElementById('updateProgWrap');
-        const fill = document.getElementById('updateProgFill');
-        const box = document.getElementById('updateStatusBox');
-        if (btn) { btn.disabled = true; btn.textContent = '⚡ Installing instant update...'; }
+        const btn = document.getElementById(fromPopup ? 'btnStartupUpdateNow' : 'btnOtaPyUpdate');
+        const wrap = document.getElementById(fromPopup ? 'startupUpdProgWrap' : 'updateProgWrap');
+        const fill = document.getElementById(fromPopup ? 'startupUpdProgFill' : 'updateProgFill');
+        const box = document.getElementById(fromPopup ? 'startupUpdStatus' : 'updateStatusBox');
+        if (btn) { btn.disabled = true; btn.textContent = 'Installing update...'; }
         if (wrap) wrap.style.display = 'block';
+        if (box && fromPopup) box.style.display = 'block';
         if (fill) fill.style.width = '45%';
         try {
             const resp = await fetch('/api/apply_ota_py', {
@@ -9583,13 +9731,13 @@ html, body { max-width: 100%; overflow-x: hidden; }
             if (!st.success) {
                 if (fill) fill.style.width = '0%';
                 if (box) { box.style.color = '#fca5a5'; box.textContent = st.error || 'Instant update failed'; }
-                if (btn) { btn.disabled = false; btn.textContent = `⚡ Instant Update v${pendingUpdateInfo.latest_version || ''}`; }
+                if (btn) { btn.disabled = false; btn.textContent = `Instant Update v${pendingUpdateInfo.latest_version || ''}`; }
                 showToast(st.error || 'Instant update failed', 'err');
                 return;
             }
             if (fill) fill.style.width = '100%';
-            if (box) { box.style.color = '#6ee7b7'; box.textContent = st.message || 'Restarting app...'; }
-            if (btn) btn.textContent = 'Restarting into new version...';
+            if (box) { box.style.color = '#86efac'; box.textContent = st.message || 'Restarting app...'; }
+            if (btn) btn.textContent = 'Restarting app...';
             showToast('Update ready! App restart ho raha hai...', 'ok');
             setTimeout(() => {
                 if (window.StreamHubAndroid && typeof window.StreamHubAndroid.restartApp === 'function') {
@@ -9643,7 +9791,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 if (dockDot) dockDot.style.display = hasUpd ? 'block' : 'none';
                 if (chip) {
                     if (hasUpd) {
-                        chip.textContent = `⬆ Update v${data.latest_version}`;
+                        chip.textContent = `Update v${data.latest_version}`;
                         chip.classList.add('active');
                     } else {
                         chip.textContent = isAndroidApp()
@@ -9656,13 +9804,13 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 const setUpdSub = document.getElementById('settingsUpdateSub');
                 if (setUpdBadge) {
                     if (hasUpd) {
-                        setUpdBadge.textContent = `⬆ New v${data.latest_version}`;
-                        setUpdBadge.style.background = 'rgba(16,185,129,0.22)';
-                        setUpdBadge.style.color = '#6ee7b7';
+                        setUpdBadge.textContent = `New v${data.latest_version}`;
+                        setUpdBadge.style.background = 'rgba(34,197,94,0.18)';
+                        setUpdBadge.style.color = '#86efac';
                     } else {
                         setUpdBadge.textContent = `Up to Date • v${data.version}`;
-                        setUpdBadge.style.background = 'rgba(255,255,255,0.12)';
-                        setUpdBadge.style.color = '#e2e8f0';
+                        setUpdBadge.style.background = 'var(--surface-2)';
+                        setUpdBadge.style.color = 'var(--text-muted)';
                     }
                 }
                 if (setUpdSub) {
@@ -9671,31 +9819,32 @@ html, body { max-width: 100%; overflow-x: hidden; }
                         : `Installed: v${data.version} • GitHub auto-update active`;
                 }
                 if (navPill) {
+                    const navLbl = document.getElementById('btnNavUpdateLabel');
                     if (hasUpd) {
-                        navPill.textContent = `⬆ v${data.latest_version}`;
+                        if (navLbl) navLbl.textContent = `v${data.latest_version}`;
                         navPill.style.display = 'inline-flex';
                     } else {
                         navPill.style.display = 'none';
                     }
                 }
                 if (hasUpd && isAndroidApp() && modeTxt) {
-                    modeTxt.textContent = `⬆ Update v${data.latest_version}`;
+                    modeTxt.textContent = `Update v${data.latest_version}`;
                 }
             }
             if (inModal) renderUpdateModalState(data);
             else if (silentBg) {
                 if (data && data.update_available) {
                     pendingUpdateInfo = data;
-                    showToast(`⬆ New StreamHub v${data.latest_version} available! Settings me jakar update karein`, 'ok', () => openUpdateModal(false));
+                    openStartupUpdatePopup(data);
                 }
             } else if (manual) {
-                showToast(data.message || `StreamHub v${data.version || '2.5.0'} active`);
+                showToast(data.message || `StreamHub v${data.version || '2.5.4'} active`);
             }
         } catch (e) {
             if (inModal && box) box.textContent = 'Update check error';
             else if (manual && !silentBg) showToast('Update check failed', 'err');
         } finally {
-            if (inModal && chkBtn) { chkBtn.disabled = false; chkBtn.textContent = '🔄 Check for Updates'; }
+            if (inModal && chkBtn) { chkBtn.disabled = false; chkBtn.textContent = 'Check for Updates'; }
         }
     }
 
@@ -11408,7 +11557,7 @@ def _prepare_play_target(body, srv_port=None):
 
 _DEFAULT_PROFILE = {
     "name": "StreamHub User",
-    "avatar": "🎬",
+    "avatar": "film",
     "preferred_language": "Auto",
 }
 _DEFAULT_DOWNLOAD_PREFS = {
