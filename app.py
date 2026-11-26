@@ -53,7 +53,7 @@ if sys.platform == 'win32':
     except Exception:
         pass
 
-APP_VERSION = "2.5.7"
+APP_VERSION = "2.5.8"
 DEFAULT_UPDATE_URL = "khushal-jangid/streamhub"
 STREAMHUB_UPDATE_URL = os.environ.get("STREAMHUB_UPDATE_URL", "").strip()
 _ENV_DATA_DIR = os.environ.get("STREAMHUB_DATA_DIR", "").strip()
@@ -364,7 +364,7 @@ def check_link_alive(url, referer=None):
         if '.workers.dev/' in safe_url:
             # Probe mid-file range with 4-way hedge so CF byte-0 cache doesn't fool us
             try:
-                resp, st = open_upstream_range(safe_url, range_hdr='bytes=1048576-1049599', hedges=(4,), timeout=8)
+                resp, st = open_upstream_range(safe_url, range_hdr='bytes=1048576-1049599', hedges=(4,), timeout=4)
                 with resp:
                     return st in (200, 206)
             except Exception:
@@ -376,7 +376,7 @@ def check_link_alive(url, referer=None):
         if referer and 'r2.cloudflarestorage.com' not in safe_url:
             headers['Referer'] = referer
         req = urllib.request.Request(safe_url, headers=headers)
-        with urllib.request.urlopen(req, timeout=6) as resp:
+        with urllib.request.urlopen(req, timeout=4) as resp:
             data = resp.read(100)
             if b'NotEntitled' in data or b'<Error>' in data or b'downloadQuotaExceeded' in data:
                 return False
@@ -387,11 +387,43 @@ def check_link_alive(url, referer=None):
 
 # ── High-Speed Stream Cache & Hedged Seek Proxy ────────────────────────────────
 
-HEAD_CACHE_BYTES = 3 * 1024 * 1024   # 3 MB: covers all MKV header/track probes in 0ms
-TAIL_CACHE_BYTES = 1024 * 1024       # 1 MB: covers MKV Cues/seek-index probes at EOF
-LRU_BLOCK_SIZE   = 2 * 1024 * 1024   # 2 MB aligned LRU blocks for instant recent seeks
-MAX_LRU_BLOCKS   = 24                # ~48 MB sliding RAM cache per movie
+HEAD_CACHE_BYTES = 512 * 1024       # 512 KB: fast <1s startup, covers MKV tracks/duration header
+TAIL_CACHE_BYTES = 512 * 1024       # 512 KB: MKV Cues seek-index near EOF (fetched async)
+LRU_BLOCK_SIZE   = 2 * 1024 * 1024  # 2 MB aligned LRU blocks for instant recent seeks
+MAX_LRU_BLOCKS   = 12               # ~24 MB sliding RAM cache per movie (safe for Android)
 MAX_SESSIONS     = 2
+
+_BW_LOCK = threading.Lock()
+_BW_EWMA_BPS = 0.0
+_BW_UPDATED_AT = 0.0
+
+def _record_stream_bw(n_bytes, elapsed_sec):
+    global _BW_EWMA_BPS, _BW_UPDATED_AT
+    if n_bytes < 32768 or elapsed_sec <= 0.001:
+        return
+    inst_bps = min(float(n_bytes) / float(elapsed_sec), 150_000_000.0)
+    now = time.time()
+    with _BW_LOCK:
+        if (now - _BW_UPDATED_AT) > 45.0 or _BW_EWMA_BPS <= 0.0:
+            _BW_EWMA_BPS = inst_bps
+        else:
+            _BW_EWMA_BPS = (_BW_EWMA_BPS * 0.65) + (inst_bps * 0.35)
+        _BW_UPDATED_AT = now
+
+def get_network_speed_payload():
+    with _BW_LOCK:
+        stale = (time.time() - _BW_UPDATED_AT) > 45.0
+        bps = 0 if stale else int(_BW_EWMA_BPS)
+    mbps = round((bps * 8.0) / 1_000_000.0, 2) if bps > 0 else 0.0
+    if bps <= 0 or bps < 1_100_000:
+        rec = "480p"
+    elif bps < 2_800_000:
+        rec = "720p"
+    elif bps < 7_500_000:
+        rec = "1080p"
+    else:
+        rec = "4K UHD"
+    return {"success": True, "bps": bps, "mbps": mbps, "recommended_quality": rec, "stale": stale}
 
 def _read_ebml_vint(buf, pos, keep_flag=False):
     if pos >= len(buf):
@@ -697,12 +729,12 @@ class StreamSession:
 
             def _fetch_head():
                 try:
+                    t_st = time.time()
                     head_len = min(HEAD_CACHE_BYTES, self.sub_size) if self.sub_size is not None else HEAD_CACHE_BYTES
                     if is_range_capable(self.stream_url):
-                        resp, st = open_upstream_range(self.stream_url, range_hdr=self.upstream_range(0, head_len - 1), hedges=(3, 6), timeout=12)
+                        resp, st = open_upstream_range(self.stream_url, range_hdr=self.upstream_range(0, head_len - 1), hedges=(3, 6), timeout=10)
                     else:
-                        # Google CDN: always returns 200 fast; read first 3MB & extract Content-Length
-                        resp, st = open_upstream_range(self.stream_url, timeout=15)
+                        resp, st = open_upstream_range(self.stream_url, timeout=12)
                     with resp:
                         if st not in (200, 206):
                             return
@@ -716,6 +748,7 @@ class StreamSession:
                             elif cl:
                                 self.total_size = int(cl)
                         self.head_buf = self._read_exact(resp, head_len)
+                        _record_stream_bw(len(self.head_buf), time.time() - t_st)
                 except Exception as e:
                     print("[StreamSession] Head preload note:", e)
 
@@ -723,7 +756,7 @@ class StreamSession:
                 if self.is_sub or not self.seek_url or self.seek_url == self.stream_url:
                     return
                 try:
-                    resp, st = open_upstream_range(self.seek_url, range_hdr='bytes=1048576-1049599', hedges=(4,), timeout=8)
+                    resp, st = open_upstream_range(self.seek_url, range_hdr='bytes=1048576-1049599', hedges=(4,), timeout=5)
                     with resp:
                         if st not in (200, 206):
                             return
@@ -741,18 +774,17 @@ class StreamSession:
             t_head.join()
             t_probe.join()
 
-            # Prefer seek_url's exact Content-Range total_size so VLC never seeks past Worker EOF
             if not self.is_sub and seek_probe['total']:
                 self.total_size = seek_probe['total']
 
-            # Preload MKV Cues tail from seekable target (with mirror failover)
+            self.media_info = parse_mkv_media_info(self.head_buf, self.tail_buf)
+            self.initialized = True
+
+            # Fetch MKV Cues tail asynchronously so playback starts immediately
             cands = self.seek_candidates(self.seek_url or '')
             tail_url = cands[0] if cands else ''
             if self.total_size and tail_url:
-                self._fetch_tail(tail_url)
-
-            self.media_info = parse_mkv_media_info(self.head_buf, self.tail_buf)
-            self.initialized = True
+                threading.Thread(target=self._fetch_tail, args=(tail_url,), daemon=True).start()
 
     def _fetch_tail(self, tail_url):
         ts = max(0, self.total_size - TAIL_CACHE_BYTES)
@@ -1362,7 +1394,7 @@ def resolve_gpdl(gpdl_url, referer=None):
             'Referer': referer or 'https://gamerxyt.com/'
         }
         req = urllib.request.Request(gpdl_url, headers=headers)
-        with urllib.request.urlopen(req, timeout=8) as resp:
+        with urllib.request.urlopen(req, timeout=5) as resp:
             final_url = resp.url
             parsed = urllib.parse.urlparse(final_url)
             qs = urllib.parse.parse_qs(parsed.query)
@@ -1602,7 +1634,7 @@ def search_4khdhub(query, page=1, limit=24):
         return []
 
 def _parse_4khdhub_series(post_url, html):
-    """Parser for 4khdhub.one web series (Season ZIP packs + Individual Episode streams)."""
+    """Parser for 4khdhub.one web series (Season ZIP packs + Individual Episode streams + per-episode qualities)."""
     t_m = re.search(r'<title>(.*?)</title>', html, re.I | re.S)
     series_title = _clean_tag_text(t_m.group(1)) if t_m else "4K Web Series"
     series_title = re.sub(r'\s*[-|].*$', '', series_title).strip()
@@ -1618,8 +1650,8 @@ def _parse_4khdhub_series(post_url, html):
     if cp_start != -1:
         cp_sec = html[cp_start:ep_start] if ep_start > cp_start else html[cp_start:]
         for blk in re.split(r'<div[^>]*class=["\'][^"\']*\bdownload-item\b[^"\']*["\'][^>]*>', cp_sec)[1:]:
-            gm_links = re.findall(r'href=["\'](https?://greenmotors\.[a-z]+/[^"\'\s]+)["\']', blk)
-            if not gm_links:
+            links = re.findall(r'href=["\'](https?://(?:greenmotors\.|hubcloud\.|hubdrive\.|hubcdn\.|hblinks\.)[a-z]+/[^"\'\s]+)["\']', blk, re.I)
+            if not links:
                 continue
             hdr_m = re.search(r'<div[^>]*class=["\'][^"\']*download-header[^"\']*["\'][^>]*>(.*?)</div>', blk, re.S)
             hdr_txt = _clean_tag_text(re.sub(r'<code.*?>.*?</code>', '', hdr_m.group(1), flags=re.S)) if hdr_m else ""
@@ -1633,8 +1665,8 @@ def _parse_4khdhub_series(post_url, html):
             packs.append({
                 "title": label,
                 "size": sz_str,
-                "link": gm_links[0],
-                "fallback_links": gm_links,
+                "link": links[0],
+                "fallback_links": links,
             })
 
     seasons = []
@@ -1651,8 +1683,8 @@ def _parse_4khdhub_series(post_url, html):
 
             eps = []
             for e_blk in re.split(r'<div[^>]*class=["\'][^"\']*episode-download-item[^"\']*["\'][^>]*>', s_blk)[1:]:
-                gm_links = re.findall(r'href=["\'](https?://greenmotors\.[a-z]+/[^"\'\s]+)["\']', e_blk)
-                if not gm_links:
+                links = re.findall(r'href=["\'](https?://(?:greenmotors\.|hubcloud\.|hubdrive\.|hubcdn\.|hblinks\.)[a-z]+/[^"\'\s]+)["\']', e_blk, re.I)
+                if not links:
                     continue
                 ft_m = re.search(r'class=["\']episode-file-title["\'][^>]*>(.*?)</div>', e_blk, re.S)
                 epb_m = re.search(r'class=["\']badge-psa["\'][^>]*>(.*?)</span>', e_blk, re.S)
@@ -1664,15 +1696,64 @@ def _parse_4khdhub_series(post_url, html):
                     "ep_label": ep_label,
                     "title": ep_name,
                     "size": ep_sz,
-                    "link": gm_links[0],
-                    "fallback_links": gm_links,
+                    "link": links[0],
+                    "fallback_links": links,
                 })
 
             if eps:
                 g_title = f"{sn_str + ' • ' if sn_str and not st_str.startswith(sn_str) else ''}{st_str}"
                 if meta_str:
                     g_title += f" ({meta_str})"
-                seasons.append({"title": g_title, "episodes": eps})
+                seasons.append({"title": g_title, "season_num": sn_str or st_str, "episodes": eps})
+
+    # Batch decode greenmotors tokens upfront for instant episode play + attach cross-quality variants
+    all_gm = [u for p in packs for u in (p.get('fallback_links') or [p['link']]) if 'greenmotors.' in u]
+    all_gm += [u for s in seasons for e in s['episodes'] for u in (e.get('fallback_links') or [e['link']]) if 'greenmotors.' in u]
+    gm_map = _decode_greenmotors_map(all_gm) if all_gm else {}
+
+    def _pick_decoded(link_list):
+        for u in (link_list or []):
+            cand = gm_map.get(u, u)
+            if cand and _is_playable_resolved_host(cand):
+                return cand
+        return link_list[0] if link_list else ''
+
+    for p in packs:
+        dec = _pick_decoded(p.get('fallback_links') or [p['link']])
+        if dec:
+            p['link'] = dec
+    for s in seasons:
+        for e in s['episodes']:
+            dec = _pick_decoded(e.get('fallback_links') or [e['link']])
+            if dec:
+                e['link'] = dec
+
+    # Map matching (season, ep_label) across quality tiers so In-Player Quality & Auto ABR work for series episodes too!
+    ep_variants_map = {}
+    for s in seasons:
+        s_tag = re.search(r'(?:S|Season\s*)0*(\d+)', str(s.get('title') or ''), re.I)
+        s_key = s_tag.group(1) if s_tag else '1'
+        for e in s['episodes']:
+            k = (s_key, str(e.get('ep_label') or '').upper())
+            q_lbl = f"{s.get('title', '')} • {e.get('size', '')}".strip(' •')
+            ep_variants_map.setdefault(k, []).append({'title': q_lbl, 'link': e['link']})
+    for s in seasons:
+        s_tag = re.search(r'(?:S|Season\s*)0*(\d+)', str(s.get('title') or ''), re.I)
+        s_key = s_tag.group(1) if s_tag else '1'
+        for e in s['episodes']:
+            k = (s_key, str(e.get('ep_label') or '').upper())
+            opts = ep_variants_map.get(k) or []
+            if len(opts) > 1:
+                e['qualities'] = opts
+
+    # Order seasons so fast streaming tiers (720p/1080p) appear before giant 4K packs
+    def _sea_sort_key(s):
+        st_l = str(s.get('title') or '').lower()
+        s_m = re.search(r'(?:s|season\s*)0*(\d+)', st_l)
+        sn = int(s_m.group(1)) if s_m else 1
+        q_ord = 0 if '480p' in st_l else (1 if '720p' in st_l else (2 if '1080p' in st_l else 3))
+        return (sn, q_ord)
+    seasons.sort(key=_sea_sort_key)
 
     return {
         "success": True,
@@ -1701,7 +1782,7 @@ def parse_4khdhub_movie(post_url):
             dl_blocks = re.findall(r'<div[^>]*class=["\'][^"\']*download-item[^"\']*["\'][^>]*>(.*?)(?=<div[^>]*class=["\'][^"\']*download-item|\Z)', html, re.DOTALL)
 
         for block in dl_blocks:
-            gm_links = re.findall(r'href=["\'](https?://greenmotors\.[a-z]+/[^"\'\s]+)["\']', block)
+            gm_links = re.findall(r'href=["\'](https?://(?:greenmotors\.|hubcloud\.|hubdrive\.|hubcdn\.|hblinks\.|hdstream4u\.)[a-z]+/[^"\'\s]+)["\']', block, re.I)
             if not gm_links:
                 continue
             g_link = gm_links[0]
@@ -1722,13 +1803,13 @@ def parse_4khdhub_movie(post_url):
                 label += f" [{size_str}]"
             parsed_items.append((label, gm_links))
 
-        all_gm = [u for _, links in parsed_items for u in links]
-        gm_map = _decode_greenmotors_map(all_gm)
+        all_gm = [u for _, links in parsed_items for u in links if 'greenmotors.' in u]
+        gm_map = _decode_greenmotors_map(all_gm) if all_gm else {}
         qualities = []
         for label, links in parsed_items:
             resolved = None
             for u in links:
-                cand = gm_map.get(u)
+                cand = gm_map.get(u, u)
                 if cand and _is_playable_resolved_host(cand):
                     resolved = cand
                     break
@@ -3492,51 +3573,28 @@ def resolve_hubcloud(input_url):
             print(f"[Resolver] Followed HubCloud to GamerXYT: {gamer_url[:60]}")
             html, current_url = fetch_html(gamer_url, referer=current_url)
 
-        # Step 3: Discover all mirror links and test liveness
-        mirrors = []
+        # Step 3: Collect candidate mirror links first, then resolve & probe ALL in parallel (~2s vs 12s+)
+        raw_specs = []
         seen_urls = set()
 
+        def _queue_spec(m_type, url, name_tmpl, referer_val=None, needs_gpdl=False):
+            u = str(url or '').strip()
+            if not u or u in seen_urls:
+                return
+            seen_urls.add(u)
+            raw_specs.append((m_type, u, name_tmpl, referer_val, needs_gpdl))
+
         # A. Check for pixel / gpdl HubCloud links (Google 10Gbps CDN)
-        cdn_links = re.findall(r'href=["\'](https?://(?:pixel|gpdl)\.hubcloud\.[a-z]+/[^"\'\s]+)["\']', html)
-        for cdn_url in cdn_links:
-            cdn_url = cdn_url.replace('&amp;', '&')
-            direct_g = resolve_gpdl(cdn_url, referer=current_url)
-            if direct_g and direct_g not in seen_urls:
-                seen_urls.add(direct_g)
-                alive = check_link_alive(direct_g)
-                mirrors.append({
-                    'name': '[10Gbps] Google High-Speed Server (Original 4K 60FPS MKV)' + (' [OK]' if alive else ' [FAIL]'),
-                    'url': direct_g,
-                    'alive': alive,
-                    'type': 'google_cdn'
-                })
+        for cdn_url in re.findall(r'href=["\'](https?://(?:pixel|gpdl)\.hubcloud\.[a-z]+/[^"\'\s]+)["\']', html):
+            _queue_spec('google_cdn', cdn_url.replace('&amp;', '&'), '[10Gbps] Google High-Speed Server (Original 4K 60FPS MKV)', current_url, True)
 
         # B. Check for direct cryptonewz links
         for m in re.finditer(r'href=["\'](https?://cryptonewz\.online/dl\.php\?link=[^"\'\s]+)["\']', html):
-            c_url = m.group(1).replace('&amp;', '&')
-            direct_g = resolve_gpdl(c_url, referer=current_url)
-            if direct_g and direct_g not in seen_urls:
-                seen_urls.add(direct_g)
-                alive = check_link_alive(direct_g)
-                mirrors.append({
-                    'name': '[10Gbps] Google High-Speed Server (Original 4K 60FPS MKV)' + (' [OK]' if alive else ' [FAIL]'),
-                    'url': direct_g,
-                    'alive': alive,
-                    'type': 'google_cdn'
-                })
+            _queue_spec('google_cdn', m.group(1).replace('&amp;', '&'), '[10Gbps] Google High-Speed Server (Original 4K 60FPS MKV)', current_url, True)
 
         # C. Check for direct video-downloads.googleusercontent.com links
         for m in re.finditer(r'href=["\'](https?://video-downloads\.googleusercontent\.com/[^"\'\s]+)["\']', html):
-            g_url = m.group(1).replace('&amp;', '&')
-            if g_url not in seen_urls:
-                seen_urls.add(g_url)
-                alive = check_link_alive(g_url)
-                mirrors.append({
-                    'name': '[10Gbps] Google High-Speed Server (Original 4K 60FPS MKV)' + (' [OK]' if alive else ' [FAIL]'),
-                    'url': g_url,
-                    'alive': alive,
-                    'type': 'google_cdn'
-                })
+            _queue_spec('google_cdn', make_safe_url(m.group(1).replace('&amp;', '&')), '[10Gbps] Google High-Speed Server (Original 4K 60FPS MKV)', None, False)
 
         # D. Check for HubCDN direct ?r= base64 (R2 or Google CDN)
         m_r = re.search(r'[?&]r=([a-zA-Z0-9+/=]+)', input_url + "\n" + current_url + "\n" + html)
@@ -3546,32 +3604,14 @@ def resolve_hubcloud(input_url):
                 m_link = re.search(r'link=(https?://[^\s&"\']+)', dec)
                 if m_link:
                     direct_url = make_safe_url(m_link.group(1))
-                    if direct_url not in seen_urls:
-                        seen_urls.add(direct_url)
-                        alive = check_link_alive(direct_url)
-                        is_r2 = 'r2.dev' in direct_url
-                        name = ('⚡ [Full Seeking] Cloudflare R2 Direct Server' if is_r2 else '[10Gbps] Google High-Speed Server')
-                        mirrors.append({
-                            'name': name + (' [OK]' if alive else ' [FAIL]'),
-                            'url': direct_url,
-                            'alive': alive,
-                            'type': 'r2_dev' if is_r2 else 'google_cdn'
-                        })
+                    is_r2 = 'r2.dev' in direct_url
+                    _queue_spec('r2_dev' if is_r2 else 'google_cdn', direct_url, '⚡ [Full Seeking] Cloudflare R2 Direct Server' if is_r2 else '[10Gbps] Google High-Speed Server', None, False)
             except Exception as e:
                 print("[Resolver] Error decoding hubcdn ?r=:", e)
 
         # E. Check for R2 Cloudflare storage links (Native HTTP 206 Range Seeking)
         for m in re.finditer(r'href=["\'](https?://(?:[a-zA-Z0-9\-_.]+\.r2\.cloudflarestorage\.com|pub-[a-zA-Z0-9]+\.r2\.dev)/[^"\']+)["\']', html):
-            r2_url = make_safe_url(m.group(1).replace('&amp;', '&'))
-            if r2_url not in seen_urls:
-                seen_urls.add(r2_url)
-                alive = check_link_alive(r2_url)
-                mirrors.append({
-                    'name': f'⚡ [Full Seeking] Cloudflare R2 Server' + (' [OK]' if alive else ' (Disabled / 403)'),
-                    'url': r2_url,
-                    'alive': alive,
-                    'type': 'r2'
-                })
+            _queue_spec('r2', make_safe_url(m.group(1).replace('&amp;', '&')), '⚡ [Full Seeking] Cloudflare R2 Server', None, False)
 
         # F. Check for workers.dev links (Match full href first to preserve filenames with spaces!)
         w_matches = list(re.finditer(r'<a[^>]*href=["\'](https?://[a-zA-Z0-9\-_.]+\.workers\.dev/[^"\']+)["\'][^>]*>(.*?)</a>', html, re.S | re.I))
@@ -3580,55 +3620,46 @@ def resolve_hubcloud(input_url):
         for m in w_matches:
             w_url = make_safe_url(m.group(1).replace('&amp;', '&'))
             anchor_txt = _clean_tag_text(m.group(2)) if m.lastindex and m.lastindex >= 2 else ''
-            if w_url not in seen_urls:
-                seen_urls.add(w_url)
-                is_split_zip = is_zip and ('zipdisk' in anchor_txt.lower() or 'part ' in anchor_txt.lower() or 'ddl2.' in w_url.lower())
-                alive = check_link_alive(w_url)
-                if is_split_zip:
-                    mirrors.append({
-                        'name': f'📦 [{anchor_txt or "ZipDisk Split Server"}]' + (' [OK]' if alive else ' [FAIL]'),
-                        'url': w_url,
-                        'alive': alive,
-                        'type': 'zipdisk'
-                    })
-                else:
-                    status_note = ' [OK]' if alive else ' (Limited Quota / Auto-Retry)'
-                    mirrors.append({
-                        'name': f'⚡ [Full Seeking] Cloudflare Worker Server (Original 4K 60FPS MKV){status_note}',
-                        'url': w_url,
-                        'alive': alive,
-                        'type': 'worker'
-                    })
+            is_split_zip = is_zip and ('zipdisk' in anchor_txt.lower() or 'part ' in anchor_txt.lower() or 'ddl2.' in w_url.lower())
+            if is_split_zip:
+                _queue_spec('zipdisk', w_url, f'📦 [{anchor_txt or "ZipDisk Split Server"}]', None, False)
+            else:
+                _queue_spec('worker', w_url, '⚡ [Full Seeking] Cloudflare Worker Server (Original 4K 60FPS MKV)', None, False)
 
         # G. Check for hbplay.pages.dev base64 links (decodes to high-speed R2 stream)
         for m in re.finditer(r'href=["\']https?://hbplay\.pages\.dev/\?u=([a-zA-Z0-9+/=]+)["\']', html):
             try:
                 dec_u = make_safe_url(base64.b64decode(m.group(1)).decode('utf-8', errors='ignore'))
-                if dec_u.startswith('http') and dec_u not in seen_urls:
-                    seen_urls.add(dec_u)
-                    alive = check_link_alive(dec_u)
-                    mirrors.append({
-                        'name': f'⚡ [Full Seeking] Cloudflare R2 Server' + (' [OK]' if alive else ' (Disabled / 403)'),
-                        'url': dec_u,
-                        'alive': alive,
-                        'type': 'r2'
-                    })
+                if dec_u.startswith('http'):
+                    _queue_spec('r2', dec_u, '⚡ [Full Seeking] Cloudflare R2 Server', None, False)
             except Exception:
                 pass
 
         # H. Check for PixelDrain links (supports native HTTP 206 seeking)
         for m in re.finditer(r'href=["\'](https?://pixeldrain\.(?:dev|com)/u/([a-zA-Z0-9]+))["\']', html):
             pd_api = f"https://pixeldrain.dev/api/file/{m.group(2)}"
-            if pd_api not in seen_urls:
-                seen_urls.add(pd_api)
-                alive = check_link_alive(pd_api)
-                if alive:
-                    mirrors.append({
-                        'name': '⚡ [Full Seeking] PixelDrain High-Speed Server [OK]',
-                        'url': pd_api,
-                        'alive': alive,
-                        'type': 'pixeldrain'
-                    })
+            _queue_spec('pixeldrain', pd_api, '⚡ [Full Seeking] PixelDrain High-Speed Server', None, False)
+
+        def _probe_spec(spec):
+            m_type, raw_u, nm_base, ref_u, needs_gpdl = spec
+            eff_u = resolve_gpdl(raw_u, referer=ref_u) if needs_gpdl else raw_u
+            if not eff_u:
+                return None
+            eff_u = make_safe_url(eff_u)
+            alive = check_link_alive(eff_u)
+            if m_type == 'pixeldrain' and not alive:
+                return None
+            suffix = ' [OK]' if alive else (' (Limited Quota / Auto-Retry)' if m_type == 'worker' else (' (Disabled / 403)' if m_type == 'r2' else ' [FAIL]'))
+            return {'name': nm_base + suffix, 'url': eff_u, 'alive': alive, 'type': m_type}
+
+        mirrors = []
+        seen_final = set()
+        if raw_specs:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(6, len(raw_specs))) as ex:
+                for probed in ex.map(_probe_spec, raw_specs):
+                    if probed and probed['url'] not in seen_final:
+                        seen_final.add(probed['url'])
+                        mirrors.append(probed)
 
         # Default Audio Tracks
         audio_tracks = [
@@ -6348,6 +6379,19 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 </div>
                 <div class="settings-row">
                     <div>
+                        <div class="settings-label">Streaming Quality Mode</div>
+                        <div class="settings-sub">Auto mein 480p fast start hokar internet speed ke hisab se upgrade hota hai</div>
+                    </div>
+                    <select id="setDefaultStreamQuality" class="select-control" style="max-width:175px;padding:8px 10px;" onchange="saveDownloadPrefs()">
+                        <option value="auto">Auto (480p -> Speed)</option>
+                        <option value="480p">480p Data Saver</option>
+                        <option value="720p">720p HD</option>
+                        <option value="1080p">1080p Full HD</option>
+                        <option value="4k">4K UHD (High Speed)</option>
+                    </select>
+                </div>
+                <div class="settings-row">
+                    <div>
                         <div class="settings-label">Default Download Quality</div>
                         <div class="settings-sub">Low-size ke liye 480p ya 720p best rehta hai</div>
                     </div>
@@ -7850,6 +7894,139 @@ html, body { max-width: 100%; overflow-x: hidden; }
         }
     }
 
+    function _pickLightestPackIdx(packs) {
+        if (!packs || !packs.length) return -1;
+        let bestIdx = 0;
+        let bestScore = -9999;
+        packs.forEach((p, i) => {
+            const tl = String(p.title || '').toLowerCase();
+            let s = 0;
+            if (/720p/.test(tl)) s += 120;
+            else if (/1080p/.test(tl)) s += 90;
+            else if (/480p/.test(tl)) s += 80;
+            else if (/4k|2160p/.test(tl)) s -= 40;
+            const mSz = String(p.title || p.size || '').match(/(\d+(?:\.\d+)?)\s*(gb|mb)/i);
+            if (mSz) {
+                const gb = mSz[2].toUpperCase() === 'MB' ? parseFloat(mSz[1]) / 1024 : parseFloat(mSz[1]);
+                if (gb >= 35) s -= 100;
+                else if (gb >= 15) s -= 35;
+                else if (gb <= 6) s += 25;
+            }
+            if (/\.zip/i.test(tl)) s -= 10;
+            if (s > bestScore) { bestScore = s; bestIdx = i; }
+        });
+        return bestIdx;
+    }
+
+    function playZipEpisodeDirect(zipIdx) {
+        const ep = activeZipEntries[zipIdx];
+        if (!ep) return;
+        activeZipIndex = zipIdx;
+        markWatched(ep.sid || ep.name);
+        renderSeriesEpisodes();
+        const sTitle = cleanDisplayTitle((activeSeriesData && activeSeriesData.title) || (currentMovieMeta && currentMovieMeta.title) || 'Web Series');
+        const pKey = (currentMovieMeta && currentMovieMeta.permalink) || '';
+        const epLbl = `Ep ${zipIdx + 1}`;
+        const mKey = pKey ? `${pKey}::zip::${ep.name}` : (ep.sid || ep.name);
+        const prevProg = getProgressByKey(mKey, ep.sid || ep.name);
+        const startSec = (prevProg && prevProg.position_sec >= 10 && prevProg.pct < 95) ? Math.floor(prevProg.position_sec) : 0;
+        const reqPayload = {
+            stream_url: ep.stream_url,
+            seek_url: ep.seek_url || '',
+            base_offset: ep.base_offset || 0,
+            sub_size: (ep.sub_size !== undefined && ep.sub_size !== null) ? ep.sub_size : null,
+            compress_method: ep.compress_method || 0,
+            sid: ep.sid || '',
+            title: `${sTitle} • ${ep.name}`,
+            ep_label: epLbl,
+            media_key: mKey,
+            parent_key: pKey,
+            start_time: startSec,
+            preferred_language: (userSettingsState.profile && userSettingsState.profile.preferred_language) || 'Auto',
+            preferred_quality: (userSettingsState.download_prefs && userSettingsState.download_prefs.stream_quality) || 'auto',
+            next_episode: buildNextZipPayload(zipIdx + 1, 0)
+        };
+        if (isAndroidApp()) {
+            launchAndroidPlayerWithPayload(reqPayload, false);
+            return;
+        }
+        playZipEntry(zipIdx);
+    }
+
+    async function unpackSeriesPackInline(packIdx, silentAuto) {
+        const pack = activeSeriesData && (activeSeriesData.packs || [])[packIdx];
+        if (!pack || !pack.link) return;
+        const list = document.getElementById('episodesList');
+        const seasonSelect = document.getElementById('seasonSelect');
+        if (list) {
+            list.innerHTML = `<div class="ep-row"><div class="ep-info"><div class="ep-title">Unpacking episodes from ${esc(cleanDisplayTitle(pack.title))}...</div><div class="ep-meta">Loading individual episodes for 1-tap playback</div></div></div>`;
+        }
+        try {
+            const resp = await fetch('/api/resolve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: pack.link })
+            });
+            const data = await resp.json();
+            if (!data || !data.success) {
+                if (!silentAuto) showToast((data && data.error) || 'Pack episodes load nahi hue', 'err');
+                if (list) list.innerHTML = `<div class="ep-row"><div class="ep-info"><div class="ep-title">Pack unpack nahi ho paya — doosra pack try karein</div><div class="ep-meta">${esc((data && data.error) || 'Server unavailable')}</div></div></div>`;
+                return;
+            }
+            if (data.is_series && data.seasons && data.seasons.length) {
+                activeSeriesData.seasons = data.seasons;
+                seasonSelect.innerHTML = '';
+                data.seasons.forEach((s, idx) => {
+                    const opt = document.createElement('option');
+                    opt.value = 'season:' + idx;
+                    opt.textContent = `${cleanDisplayTitle(s.title)} (${(s.episodes || []).length} Episodes)`;
+                    seasonSelect.appendChild(opt);
+                });
+                if (activeSeriesData.packs && activeSeriesData.packs.length) {
+                    const opt = document.createElement('option');
+                    opt.value = 'packs';
+                    opt.textContent = `Season Packs (${activeSeriesData.packs.length} Packs)`;
+                    seasonSelect.appendChild(opt);
+                }
+                seasonSelect.value = 'season:0';
+                renderSeriesEpisodes();
+                return;
+            }
+            if (data.is_zip && data.zip_entries && data.zip_entries.length) {
+                activeZipEntries = data.zip_entries;
+                activeZipTitle = data.zip_title || pack.title || 'Season Pack';
+                activeSeriesData._unpackedZipTitle = cleanDisplayTitle(pack.title);
+                if (!Array.from(seasonSelect.options).some(o => o.value === 'zip_unpacked')) {
+                    const opt = document.createElement('option');
+                    opt.value = 'zip_unpacked';
+                    opt.textContent = `Pack Episodes (${activeZipEntries.length} Episodes)`;
+                    seasonSelect.insertBefore(opt, seasonSelect.firstChild);
+                }
+                seasonSelect.value = 'zip_unpacked';
+                renderSeriesEpisodes();
+                return;
+            }
+            // Direct single movie/episode fallback inside pack
+            if (isAndroidApp() && data.stream_url) {
+                launchAndroidDirectStream({
+                    stream_url: data.stream_url,
+                    seek_url: data.seek_url || '',
+                    sid: data.sid || '',
+                    compress_method: data.compress_method || 0,
+                    title: cleanDisplayTitle(data.title || pack.title || 'Episode'),
+                    media_key: pack.link
+                });
+                return;
+            }
+            if (!silentAuto) {
+                document.getElementById('urlInput').value = pack.link;
+                resolveLink();
+            }
+        } catch (e) {
+            if (!silentAuto) showToast('Pack load error: ' + e.message, 'err');
+        }
+    }
+
     function renderSeriesPanel(details, posterUrl) {
         activeSeriesData = details;
         activeSeriesSeasonIdx = 0;
@@ -7886,6 +8063,12 @@ html, body { max-width: 100%; overflow-x: hidden; }
 
         renderSeriesEpisodes();
         panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        // Auto-unpack pack-only series (e.g. Blade Runner 2099 / The Good Doctor) immediately
+        if ((!details.seasons || !details.seasons.length) && details.packs && details.packs.length) {
+            const bestP = _pickLightestPackIdx(details.packs);
+            if (bestP >= 0) unpackSeriesPackInline(bestP, true);
+        }
     }
 
     function renderSeriesEpisodes() {
@@ -7894,18 +8077,39 @@ html, body { max-width: 100%; overflow-x: hidden; }
         list.innerHTML = '';
         if (!activeSeriesData) return;
 
+        if (val === 'zip_unpacked' && activeZipEntries.length) {
+            activeZipEntries.forEach((ep, zIdx) => {
+                const row = document.createElement('div');
+                row.className = 'ep-row' + (zIdx === activeZipIndex ? ' active' : '');
+                const seekTag = ep.seekable ? 'Seekable' : 'Sequential';
+                const wTag = isWatched(ep.sid || ep.name) ? '<span class="watched-chip">Watched</span>' : '';
+                row.innerHTML = `
+                    <div class="ep-info">
+                        <div class="ep-title">${zIdx + 1}. ${esc(ep.name)}${wTag}</div>
+                        <div class="ep-meta">${esc(ep.size || 'HD')} &bull; ${seekTag}</div>
+                    </div>
+                    <div class="ep-actions">
+                        <button class="btn-sm btn-copy-sm" onclick="openDownloadPickerForZipEp(${zIdx})" title="Download Offline" aria-label="Download Offline">${_SH_ICONS.download}</button>
+                        <button class="btn-sm btn-vlc-sm" onclick="playZipEpisodeDirect(${zIdx})">Play</button>
+                    </div>
+                `;
+                list.appendChild(row);
+            });
+            return;
+        }
+
         if (val === 'packs') {
-            (activeSeriesData.packs || []).forEach(p => {
+            (activeSeriesData.packs || []).forEach((p, pIdx) => {
                 const row = document.createElement('div');
                 row.className = 'ep-row';
                 const wTag = isWatched(p.link) ? '<span class="watched-chip">Watched</span>' : '';
                 row.innerHTML = `
                     <div class="ep-info">
                         <div class="ep-title">${esc(cleanDisplayTitle(p.title))}${wTag}</div>
-                        <div class="ep-meta">Season Pack — tap to list seekable episodes</div>
+                        <div class="ep-meta">Season Pack — tap to load episodes</div>
                     </div>
                     <div class="ep-actions">
-                        <button class="btn-sm btn-vlc-sm" onclick="pickSeriesLink('${encodeURIComponent(p.link)}', -1, -1)">Open Pack</button>
+                        <button class="btn-sm btn-vlc-sm" onclick="unpackSeriesPackInline(${pIdx}, false)">Open Pack</button>
                     </div>
                 `;
                 list.appendChild(row);
@@ -7923,14 +8127,15 @@ html, body { max-width: 100%; overflow-x: hidden; }
             const wTag = isWatched(ep.link) ? '<span class="watched-chip">Watched</span>' : '';
             const offDone = offlineDownloadsList.some(d => d.status === 'completed' && d.hdhub_link === ep.link);
             const offTag = offDone ? '<span class="watched-chip" style="background:rgba(16,185,129,0.2);color:#6ee7b7;border-color:rgba(16,185,129,0.4);">Offline</span>' : '';
+            const qBadge = (ep.qualities && ep.qualities.length > 1) ? ` • ${ep.qualities.length} Qualities` : '';
             row.innerHTML = `
                 <div class="ep-info">
                     <div class="ep-title">${esc(ep.ep_label)} &bull; ${esc(ep.title)}${wTag}${offTag}</div>
-                    <div class="ep-meta">${ep.size ? 'Size: ' + esc(ep.size) : 'HD / 4K Stream'}</div>
+                    <div class="ep-meta">${ep.size ? 'Size: ' + esc(ep.size) : 'HD / 4K Stream'}${qBadge}</div>
                 </div>
                 <div class="ep-actions">
                     <button class="btn-sm btn-copy-sm" onclick="openDownloadPickerForEpisode(${idx}, ${epIdx})" title="Download Offline" aria-label="Download Offline">${_SH_ICONS.download}</button>
-                    <button class="btn-sm btn-vlc-sm" onclick="pickSeriesLink('${encodeURIComponent(ep.link)}', ${idx}, ${epIdx})">Stream Episode</button>
+                    <button class="btn-sm btn-vlc-sm" onclick="pickSeriesLink('${encodeURIComponent(ep.link)}', ${idx}, ${epIdx})">Play</button>
                 </div>
             `;
             list.appendChild(row);
@@ -7948,7 +8153,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
     function launchAndroidDirectStream(cfg) {
         if (!isAndroidApp()) return false;
         const profLang = (userSettingsState.profile && userSettingsState.profile.preferred_language) || 'Auto';
-        const defQual = (userSettingsState.download_prefs && userSettingsState.download_prefs.default_quality) || '720p';
+        const defQual = (userSettingsState.download_prefs && userSettingsState.download_prefs.stream_quality) || 'auto';
         const payload = Object.assign({
             is_pending: true,
             target: '',
@@ -8074,6 +8279,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
             markWatched(link);
         }
         if (isAndroidApp() && sIdx >= 0 && epIdx >= 0) {
+            const sea = (activeSeriesData && activeSeriesData.seasons || [])[sIdx];
+            const epObjCur = sea && sea.episodes ? sea.episodes[epIdx] : null;
             const epKey = pKey ? `${pKey}::ep::${epLbl}` : link;
             const prevProg = getProgressByKey(epKey, link);
             const startSec = (prevProg && prevProg.position_sec >= 10 && prevProg.pct < 95) ? Math.floor(prevProg.position_sec) : 0;
@@ -8085,6 +8292,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 media_key: epKey,
                 parent_key: pKey,
                 start_time: startSec,
+                quality_options: (epObjCur && epObjCur.qualities) ? epObjCur.qualities : [],
                 next_episode: nxtPayload
             });
             return;
@@ -8358,12 +8566,14 @@ html, body { max-width: 100%; overflow-x: hidden; }
             season_idx: sIdx,
             ep_idx: epIdx,
             hdhub_link: nxt.link,
+            movie_permalink: pKey,
             title: `${cleanDisplayTitle(activeSeriesData.title || activeTitle)} • ${epLbl}`,
             ep_label: epLbl,
             audio_track: trk,
             sub_track: subEl ? subEl.value : 'auto',
             media_key: pKey ? `${pKey}::ep::${epLbl}` : nxt.link,
             parent_key: pKey,
+            quality_options: (nxt && nxt.qualities) ? nxt.qualities : [],
             next_episode: buildNextSeriesPayload(sIdx, epIdx + 1, depth + 1),
         };
     }
@@ -9244,6 +9454,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
         if (expSel) expSel.value = String(p.auto_expire_days !== undefined ? p.auto_expire_days : 7);
         const dqSel = document.getElementById('setDefaultDlQuality');
         if (dqSel) dqSel.value = String(p.default_quality || '720p');
+        const sqSel = document.getElementById('setDefaultStreamQuality');
+        if (sqSel) sqSel.value = String(p.stream_quality || 'auto');
 
         const badge = document.getElementById('navDownloadsBadge');
         const dockBadge = document.getElementById('dockDownloadsBadge');
@@ -9595,11 +9807,13 @@ html, body { max-width: 100%; overflow-x: hidden; }
         const autoDel = document.getElementById('setAutoDelWatched');
         const exp = document.getElementById('setExpireDays');
         const dq = document.getElementById('setDefaultDlQuality');
+        const sq = document.getElementById('setDefaultStreamQuality');
         const prefs = {
             storage_limit_gb: cap ? parseInt(cap.value, 10) : 4,
             auto_delete_watched: autoDel ? Boolean(autoDel.checked) : true,
             auto_expire_days: exp ? parseInt(exp.value, 10) : 7,
-            default_quality: dq ? dq.value : '720p'
+            default_quality: dq ? dq.value : '720p',
+            stream_quality: sq ? sq.value : 'auto'
         };
         try {
             const resp = await fetch('/api/settings', {
@@ -10868,14 +11082,17 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
         chunks_written = 0
 
         try:
+            bw_bytes = 0
+            bw_t0 = time.time()
             while True:
                 try:
                     read_fn = getattr(resp, 'read1', resp.read)
                     while True:
-                        want = 65536
+                        want = 65536 if chunks_written < 4 else 131072
                         if end_byte is not None:
                             rem = end_byte - cur_pos + 1
                             if rem <= 0:
+                                _record_stream_bw(bw_bytes, time.time() - bw_t0)
                                 return
                             want = min(want, rem)
                         chunk = read_fn(want)
@@ -10883,6 +11100,11 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
                             break
                         self.wfile.write(chunk)
                         chunks_written += 1
+                        bw_bytes += len(chunk)
+                        if bw_bytes >= 524288:
+                            _record_stream_bw(bw_bytes, time.time() - bw_t0)
+                            bw_bytes = 0
+                            bw_t0 = time.time()
                         if chunks_written <= 4:
                             try:
                                 self.wfile.flush()
@@ -11359,6 +11581,10 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
         # App Info & Auto-Update Check APIs (.exe / Updater Readiness)
         if path == '/api/app_info':
             self._json(get_app_info_payload())
+            return
+
+        if path == '/api/network_speed':
+            self._json(get_network_speed_payload())
             return
 
         if path == '/api/check_update':
@@ -12103,7 +12329,7 @@ def _get_movie_details_cached(post_url):
 def _parse_quality_option_meta(title_str):
     t = str(title_str or '').strip()
     tl = t.lower()
-    if re.search(r'\b(2160p|4k|uhd|ds4k)\b', tl):
+    if '2160p' in tl:
         short_lbl = '4K UHD'
     elif '1080p' in tl:
         short_lbl = '1080p'
@@ -12113,6 +12339,8 @@ def _parse_quality_option_meta(title_str):
         short_lbl = '480p'
     elif '360p' in tl:
         short_lbl = '360p'
+    elif re.search(r'\b(4k|uhd|ds4k)\b', tl):
+        short_lbl = '4K UHD'
     else:
         short_lbl = 'HD'
 
@@ -12136,8 +12364,14 @@ def _parse_quality_option_meta(title_str):
         langs.append('Multi Audio')
     lang_hint = ' + '.join(langs[:2]) if langs else ''
 
-    m_sz = re.search(r'(\d+(?:\.\d+)?\s*(?:GB|MB))', t, re.I)
-    size_hint = m_sz.group(1).upper().replace('  ', ' ') if m_sz else ''
+    m_sz = re.search(r'(\d+(?:\.\d+)?)\s*(GB|MB|TB)', t, re.I)
+    size_hint = ''
+    size_gb = 0.0
+    if m_sz:
+        num = float(m_sz.group(1))
+        unit = m_sz.group(2).upper()
+        size_hint = f"{m_sz.group(1)} {unit}"
+        size_gb = num * 1024.0 if unit == 'TB' else (num / 1024.0 if unit == 'MB' else num)
 
     parts = [short_lbl]
     if lang_hint:
@@ -12154,35 +12388,62 @@ def _parse_quality_option_meta(title_str):
         'short_label': short_lbl,
         'language_hint': lang_hint,
         'size_hint': size_hint,
+        'size_gb': round(size_gb, 2),
     }
 
-def _score_quality_candidate(title_str, pref_quality='720p', pref_lang='Auto'):
+def _score_quality_candidate(title_str, pref_quality='auto', pref_lang='Auto', link='', size_gb=0.0):
     tl = str(title_str or '').lower()
-    pq = str(pref_quality or '720p').lower()
+    lnk_l = str(link or '').lower()
+    pq = str(pref_quality or 'auto').lower().strip()
     pl = str(pref_lang or 'Auto').lower().strip()
     score = 0
 
+    if not size_gb:
+        size_gb = _parse_quality_option_meta(title_str).get('size_gb', 0.0)
+
+    is_hdstream = 'hdstream4u.com' in lnk_l
     tier_map = [
         ('480p', r'480p'),
         ('720p', r'720p'),
         ('1080p', r'1080p'),
         ('4k', r'2160p|4k|uhd|ds4k'),
     ]
-    matched_tier = '720p'
-    for tk, pat in tier_map:
-        if re.search(pat, tl):
-            matched_tier = tk
-            break
+    matched_tier = 'hls_alt' if is_hdstream else '720p'
+    if not is_hdstream:
+        for tk, pat in tier_map:
+            if re.search(pat, tl):
+                matched_tier = tk
+                break
 
-    norm_pq = '4k' if any(x in pq for x in ('4k', '2160', 'uhd')) else ('1080p' if '1080' in pq else ('480p' if '480' in pq else '720p'))
-    if matched_tier == norm_pq:
-        score += 120
-    elif (norm_pq == '720p' and matched_tier == '1080p') or (norm_pq == '1080p' and matched_tier == '720p'):
-        score += 55
-    elif matched_tier in ('720p', '1080p'):
-        score += 35
-    elif matched_tier == '480p':
-        score += 20
+    if pq in ('auto', 'ask', ''):
+        # Fast-start Adaptive mode: 480p -> 720p -> lightweight 1080p; avoid 50-90GB remuxes on start
+        auto_weights = {'480p': 145, '720p': 115, '1080p': 75, '4k': 25, 'hls_alt': 12}
+        score += auto_weights.get(matched_tier, 50)
+    else:
+        norm_pq = '4k' if any(x in pq for x in ('4k', '2160', 'uhd')) else ('1080p' if '1080' in pq else ('480p' if '480' in pq else '720p'))
+        if matched_tier == norm_pq:
+            score += 130
+        elif (norm_pq == '720p' and matched_tier == '1080p') or (norm_pq == '1080p' and matched_tier == '720p'):
+            score += 65
+        elif matched_tier == '480p':
+            score += 40
+        elif matched_tier in ('720p', '1080p'):
+            score += 35
+        elif matched_tier == 'hls_alt':
+            score += 5
+
+    # Prefer lightweight, fast-loading files over massive 40-90GB raw BluRay Remuxes
+    if size_gb >= 42.0:
+        score -= 115 if pq != '4k' else 35
+    elif size_gb >= 22.0:
+        score -= 60 if pq != '4k' else 15
+    elif size_gb >= 10.0 and pq in ('auto', 'ask', '480p', '720p', ''):
+        score -= 28
+    elif 0.1 < size_gb <= 3.5:
+        score += 18
+
+    if is_hdstream:
+        score -= 40
 
     if pl and pl != 'auto':
         if pl in tl:
@@ -12195,7 +12456,7 @@ def _score_quality_candidate(title_str, pref_quality='720p', pref_lang='Auto'):
     if re.search(r'\b(hdts|cam|camrip|predvd|telesync)\b', tl):
         score -= 100
     if 'zip' in tl or 'pack' in tl:
-        score -= 15
+        score -= 20
     return score
 
 def _build_quality_options_from_list(qualities_raw, active_idx=-1, active_link=''):
@@ -12221,6 +12482,7 @@ def _build_quality_options_from_list(qualities_raw, active_idx=-1, active_link='
             'short_label': meta['short_label'],
             'language_hint': meta['language_hint'],
             'size_hint': meta['size_hint'],
+            'size_gb': meta['size_gb'],
             'raw_title': raw_t,
             'hdhub_link': lnk,
             'stream_url': str((q or {}).get('stream_url', '') or ''),
@@ -12326,7 +12588,8 @@ def _prepare_play_target(body, srv_port=None):
     backups = body.get('backup_urls') or []
 
     user_cfg = get_user_settings()
-    pref_quality = str(body.get('preferred_quality') or (user_cfg.get('download_prefs') or {}).get('default_quality') or '720p').strip()
+    pref_quality = str(body.get('preferred_quality') or (user_cfg.get('download_prefs') or {}).get('stream_quality') or 'auto').strip()
+    is_auto_mode = pref_quality.lower() in ('auto', 'ask', '')
     pref_lang = str(body.get('preferred_language') or (user_cfg.get('profile') or {}).get('preferred_language') or 'Auto').strip()
     movie_permalink = str(body.get('movie_permalink', '') or '').strip()
     hdhub_link = str(body.get('hdhub_link', '') or '').strip()
@@ -12435,12 +12698,18 @@ def _prepare_play_target(body, srv_port=None):
         elif quality_options:
             ranked = sorted(
                 range(len(quality_options)),
-                key=lambda i: _score_quality_candidate(quality_options[i].get('raw_title') or quality_options[i].get('label'), pref_quality, pref_lang),
+                key=lambda i: _score_quality_candidate(
+                    quality_options[i].get('raw_title') or quality_options[i].get('label'),
+                    pref_quality,
+                    pref_lang,
+                    link=quality_options[i].get('hdhub_link', ''),
+                    size_gb=float(quality_options[i].get('size_gb', 0) or 0)
+                ),
                 reverse=True
             )
             if selected_q_id is not None and 0 <= selected_q_id < len(quality_options):
                 ranked = [selected_q_id] + [i for i in ranked if i != selected_q_id]
-            cand_links = [(i, quality_options[i]['hdhub_link'], quality_options[i]['short_label']) for i in ranked[:4]]
+            cand_links = [(i, quality_options[i]['hdhub_link'], quality_options[i]['short_label']) for i in ranked[:6]]
         elif hdhub_link:
             cand_links = [(0, hdhub_link, '')]
         else:
@@ -12450,15 +12719,42 @@ def _prepare_play_target(body, srv_port=None):
         resolved = None
         last_err = ''
         winning_idx = -1
+        fallback_first = None
         for idx_q, c_link, _ in cand_links:
             r_try = _resolve_episode_cached(c_link)
-            if r_try and r_try.get('success') and r_try.get('stream_url'):
-                resolved = r_try
-                winning_idx = idx_q
-                hdhub_link = c_link
-                break
-            if r_try and r_try.get('error'):
-                last_err = str(r_try.get('error'))
+            if not (r_try and r_try.get('success') and r_try.get('stream_url')):
+                if r_try and r_try.get('error'):
+                    last_err = str(r_try.get('error'))
+                continue
+            cand_cm = int(r_try.get('compress_method', 0) or 0)
+            cand_url = r_try.get('stream_url', '')
+            cand_seek = r_try.get('seek_url', '') or ''
+            cand_sid = str(r_try.get('sid', '') or '')
+            cand_backups = []
+            if cand_sid:
+                s_tmp = get_short_stream(cand_sid)
+                if s_tmp:
+                    cand_backups = s_tmp.get('backup_urls') or []
+            if cand_cm == 0 and '.m3u8' not in cand_url and len(cand_links) > 1:
+                sess_chk = get_stream_session(
+                    cand_url, cand_seek,
+                    int(r_try.get('base_offset', 0) or 0),
+                    r_try.get('sub_size', None),
+                    cand_cm,
+                    backup_urls=cand_backups
+                )
+                sess_chk.ensure_init()
+                if not sess_chk.head_buf and not sess_chk.total_size:
+                    if fallback_first is None:
+                        fallback_first = (r_try, idx_q, c_link)
+                    last_err = 'Server 403 / timeout — alternate mirror try kar raha hu'
+                    continue
+            resolved = r_try
+            winning_idx = idx_q
+            hdhub_link = c_link
+            break
+        if not resolved and fallback_first is not None:
+            resolved, winning_idx, hdhub_link = fallback_first
         if not resolved:
             return None, {"success": False, "message": last_err or 'Stream link resolve nahi hua — doosra title try karein'}
 
@@ -12620,6 +12916,7 @@ def _prepare_play_target(body, srv_port=None):
         "offline_id": offline_id,
         "subtitle_file": sub_file,
         "next_episode": next_ep_obj,
+        "auto_mode": is_auto_mode,
         "active_quality_label": active_quality_label,
         "selected_quality_id": int(selected_q_id or 0),
         "quality_options": quality_options,
@@ -12636,7 +12933,8 @@ _DEFAULT_DOWNLOAD_PREFS = {
     "storage_limit_gb": 4,       # 2, 4, 8, 16, or 0 for Unlimited
     "auto_delete_watched": True, # Clean up automatically once watched (>=95%)
     "auto_expire_days": 7,       # 7, 14, 30, or 0 for Never
-    "default_quality": "720p",   # 480p, 720p, 1080p, ask
+    "default_quality": "720p",   # 480p, 720p, 1080p, ask (Offline downloads)
+    "stream_quality": "auto",    # auto (480p start -> ABR), 480p, 720p, 1080p, 4k
 }
 _VALID_THEMES = ("netflix", "amoled", "prime", "gold")
 _OFFLINE_RECONCILED = False
@@ -12782,6 +13080,9 @@ def get_user_settings():
         dq = str(dp.get("default_quality", prefs["default_quality"]) or "").lower()
         if dq in ("480p", "720p", "1080p", "ask"):
             prefs["default_quality"] = dq
+        sq = str(dp.get("stream_quality", prefs["stream_quality"]) or "").lower()
+        if sq in ("auto", "480p", "720p", "1080p", "4k"):
+            prefs["stream_quality"] = sq
 
     return {
         "success": True,
@@ -12838,6 +13139,10 @@ def save_user_settings(body):
             dq = str(d_in["default_quality"] or "").lower()
             if dq in ("480p", "720p", "1080p", "ask"):
                 dp["default_quality"] = dq
+        if "stream_quality" in d_in:
+            sq = str(d_in["stream_quality"] or "").lower()
+            if sq in ("auto", "480p", "720p", "1080p", "4k"):
+                dp["stream_quality"] = sq
         updates["download_prefs"] = dp
 
     if updates:
