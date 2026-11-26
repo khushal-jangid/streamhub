@@ -1,0 +1,8 @@
+{
+  "version": "2.3.0",
+  "download_url": "https://github.com/khushal-jangid/streamhub/releases/latest/download/StreamHub.exe",
+  "apk_download_url": "https://github.com/khushal-jangid/streamhub/releases/latest/download/StreamHub.apk",
+  "sha256": "5de64c35449d77e7afe5a1e5c159e934ad008d1dde0a7c75056aeb1c38faa3e5",
+  "size_bytes": 87645853,
+  "notes": "StreamHub v2.3.0: Standalone 4K Cinema App with built-in libVLC & 1-click Auto-Updater for PC and Android."
+}

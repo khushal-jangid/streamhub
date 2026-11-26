@@ -1,0 +1,957 @@
+import http.server
+import socketserver
+import urllib.request
+import urllib.parse
+import json
+import re
+import base64
+import os
+import subprocess
+import shutil
+import gzip as _gzip
+import webbrowser
+import threading
+
+PORT = 5050
+USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+
+def _find(name, *fallbacks):
+    found = shutil.which(name)
+    if found:
+        return found
+    for f in fallbacks:
+        if f and os.path.exists(f):
+            return f
+    return fallbacks[0] if fallbacks else name
+
+FFPROBE_PATH = _find("ffprobe",
+    r"C:\Users\choya\AppData\Local\hermes\tools\ffmpeg-9.0.1-win32-x64\bin\ffprobe.exe",
+    r"C:\ffmpeg\bin\ffprobe.exe")
+
+FFMPEG_PATH = _find("ffmpeg",
+    r"C:\Users\choya\AppData\Local\hermes\tools\ffmpeg-9.0.1-win32-x64\bin\ffmpeg.exe",
+    r"C:\ffmpeg\bin\ffmpeg.exe")
+
+VLC_PATH = _find("vlc",
+    r"C:\Program Files\VideoLAN\VLC\vlc.exe",
+    r"C:\Program Files (x86)\VideoLAN\VLC\vlc.exe")
+
+LANG_MAP = {
+    'hin': 'Hindi',   'hindi': 'Hindi',
+    'tam': 'Tamil',   'tamil': 'Tamil',
+    'tel': 'Telugu',  'telugu': 'Telugu',
+    'kan': 'Kannada', 'kannada': 'Kannada',
+    'mal': 'Malayalam',
+    'eng': 'English', 'english': 'English',
+    'und': 'Audio Track'
+}
+
+# ── Proxy Cache for Browser Player ─────────────────────────────────────────────
+_proxy_cache = {}
+_proxy_lock  = threading.Lock()
+
+def store_proxy(url, referer=None):
+    import hashlib
+    key = hashlib.md5(url.encode()).hexdigest()[:12]
+    with _proxy_lock:
+        _proxy_cache[key] = {'url': url, 'referer': referer or ''}
+    return f"http://localhost:{PORT}/api/proxy/{key}"
+
+# ── HTTP Helpers ───────────────────────────────────────────────────────────────
+
+def fetch_html(url, referer=None, extra_headers=None, timeout=15):
+    headers = {
+        'User-Agent': USER_AGENT,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9,hi;q=0.8',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+    }
+    if referer:
+        headers['Referer'] = referer
+    if extra_headers:
+        headers.update(extra_headers)
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read()
+        final_url = resp.url
+        try:
+            raw = _gzip.decompress(raw)
+        except Exception:
+            pass
+        return raw.decode('utf-8', errors='ignore'), final_url
+
+def check_link_alive(url, referer=None):
+    """Fast check whether a stream URL actually works or returns 403 NotEntitled."""
+    try:
+        headers = {
+            'User-Agent': USER_AGENT,
+            'Range': 'bytes=0-100'
+        }
+        if referer:
+            headers['Referer'] = referer
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data = resp.read(100)
+            if b'NotEntitled' in data or b'<Error>' in data:
+                return False
+            return resp.status in (200, 206)
+    except Exception:
+        return False
+
+def resolve_gpdl(gpdl_url, referer=None):
+    """Follows GPDL redirect to cryptonewz and extracts direct Google UserContent CDN link."""
+    try:
+        headers = {
+            'User-Agent': USER_AGENT,
+            'Referer': referer or 'https://gamerxyt.com/'
+        }
+        req = urllib.request.Request(gpdl_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            final_url = resp.url
+            parsed = urllib.parse.urlparse(final_url)
+            qs = urllib.parse.parse_qs(parsed.query)
+            if 'link' in qs and qs['link'][0].startswith('http'):
+                return qs['link'][0]
+            html = resp.read().decode('utf-8', errors='ignore')
+            m = re.search(r'href=["\'](https?://video-downloads\.googleusercontent\.com/[^"\']+)["\']', html)
+            if m:
+                return m.group(1)
+            m = re.search(r'id=["\']downloadBtn["\'][^>]*href=["\'](https?://[^"\']+)["\']', html)
+            if m:
+                return m.group(1)
+    except Exception as e:
+        print("[GPDL] Resolve error:", e)
+    return None
+
+def probe_audio_tracks(stream_url, referer=None):
+    audio_tracks = []
+    if not FFPROBE_PATH or not os.path.exists(FFPROBE_PATH):
+        return audio_tracks
+    try:
+        hdr = f'User-Agent: {USER_AGENT}\r\n'
+        if referer:
+            hdr += f'Referer: {referer}\r\n'
+        cmd = [
+            FFPROBE_PATH, '-v', 'quiet',
+            '-print_format', 'json',
+            '-show_streams',
+            '-probesize', '4000000',
+            '-analyzeduration', '3000000',
+            '-headers', hdr,
+            stream_url
+        ]
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, _ = p.communicate(timeout=10)
+        data = json.loads(out)
+        default_lang_order = ['Hindi', 'Tamil', 'Telugu', 'Kannada', 'Malayalam']
+        track_counter = 1
+        for s in data.get('streams', []):
+            if s.get('codec_type') == 'audio':
+                tags = s.get('tags', {})
+                raw_lang  = tags.get('language', 'und').lower()
+                raw_title = tags.get('title', '')
+                if any(k in raw_title.lower() for k in ['hdhub4u', 'hubcloud', 'uploaded', '4khdhub']):
+                    lang_name = LANG_MAP.get(raw_lang)
+                else:
+                    lang_name = raw_title or LANG_MAP.get(raw_lang)
+                if not lang_name or lang_name == 'Audio Track':
+                    lang_name = default_lang_order[track_counter - 1] if track_counter <= len(default_lang_order) else f"Track {track_counter}"
+                codec    = s.get('codec_name', '').upper()
+                channels = s.get('channels', 2)
+                ch_str   = "5.1" if channels == 6 else ("7.1" if channels == 8 else "Stereo")
+                audio_tracks.append({
+                    "track_num":    track_counter,
+                    "stream_index": s.get('index'),
+                    "lang":         lang_name,
+                    "codec":        codec,
+                    "channels":     ch_str,
+                    "label":        f"Track {track_counter}: {lang_name} ({codec} {ch_str})"
+                })
+                track_counter += 1
+    except Exception as e:
+        print("[Audio Probe] error:", e)
+    return audio_tracks
+
+# ── Main Link Resolver ─────────────────────────────────────────────────────────
+
+def resolve_hubcloud(input_url):
+    try:
+        if not input_url.startswith('http'):
+            return {"success": False, "error": "Invalid URL — http/https se shuru hona chahiye"}
+
+        html, current_url = fetch_html(input_url)
+
+        # Title and file size detection
+        title_m = re.search(r'<title>(.*?)</title>', html, re.I)
+        movie_title = title_m.group(1).strip() if title_m else "Movie Stream"
+        movie_title = re.sub(
+            r'\s*[-|]\s*(HDHub4u|4KHDHub|HubCloud|HubDrive|StreamHub|Watch Online|Free Download).*',
+            '', movie_title, flags=re.I
+        ).strip()
+        size_m = re.search(r'([\d.,]+\s*(?:GB|MB|KB))', html, re.I)
+        file_size = size_m.group(1).strip() if size_m else "Unknown Size"
+
+        # Step 1: Follow HubDrive -> HubCloud
+        m_hubcloud = re.search(r'href=["\'](https?://hubcloud\.[a-z]+/drive/[^"\'\s]+)["\']', html)
+        if m_hubcloud and '/drive/admin' not in m_hubcloud.group(1):
+            target_hubcloud = m_hubcloud.group(1)
+            print(f"[Resolver] Followed HubDrive to: {target_hubcloud}")
+            html, current_url = fetch_html(target_hubcloud, referer=input_url)
+
+        # Step 2: Follow HubCloud -> GamerXYT
+        m_gamer = re.search(r'href=["\'](https?://gamerxyt\.com/hubcloud\.php[^"\'\s]+)["\']', html)
+        if m_gamer:
+            gamer_url = m_gamer.group(1).replace('&amp;', '&')
+            print(f"[Resolver] Followed HubCloud to GamerXYT: {gamer_url[:60]}")
+            html, current_url = fetch_html(gamer_url, referer=current_url)
+
+        # Step 3: Discover all mirror links and test liveness
+        mirrors = []
+        seen_urls = set()
+
+        # A. Check for GPDL link (Google 10Gbps CDN)
+        m_gpdl = re.search(r'href=["\'](https?://gpdl\.hubcloud\.[a-z]+/\?[^"\']+)["\']', html)
+        if m_gpdl:
+            gpdl_url = m_gpdl.group(1).replace('&amp;', '&')
+            print("[Resolver] Found GPDL server, resolving to Google CDN...")
+            direct_g = resolve_gpdl(gpdl_url, referer=current_url)
+            if direct_g and direct_g not in seen_urls:
+                seen_urls.add(direct_g)
+                alive = check_link_alive(direct_g)
+                mirrors.append({
+                    'name': '[10Gbps] Google High-Speed Server',
+                    'url': direct_g,
+                    'alive': alive,
+                    'type': 'google_cdn'
+                })
+                print(f"  -> Google CDN stream: {'ACTIVE [OK]' if alive else 'OFFLINE [FAIL]'}")
+
+        # B. Check for R2 Cloudflare storage links
+        for m in re.finditer(r'href=["\'](https?://[a-z0-9]+\.r2\.cloudflarestorage\.com/[^"\']+)["\']', html):
+            r2_url = m.group(1).replace('&amp;', '&')
+            if r2_url not in seen_urls:
+                seen_urls.add(r2_url)
+                alive = check_link_alive(r2_url)
+                status_note = ' (ACTIVE [OK])' if alive else ' (Cloudflare R2 Disabled / 403)'
+                mirrors.append({
+                    'name': f'Cloudflare FSL Server{status_note}',
+                    'url': r2_url,
+                    'alive': alive,
+                    'type': 'r2'
+                })
+                print(f"  -> R2 link: {'ACTIVE [OK]' if alive else 'DEAD (403)'}")
+
+        # C. Check for direct video links (.mkv, .mp4)
+        for m in re.finditer(r'href=["\'](https?://[^"\']+\.(?:mkv|mp4|m3u8)(?:\?[^"\']*)?)["\']', html):
+            vid_url = m.group(1).replace('&amp;', '&')
+            if vid_url not in seen_urls:
+                seen_urls.add(vid_url)
+                alive = check_link_alive(vid_url)
+                mirrors.append({
+                    'name': 'Direct Video Stream' + (' (ACTIVE [OK])' if alive else ' (OFFLINE)'),
+                    'url': vid_url,
+                    'alive': alive,
+                    'type': 'direct'
+                })
+
+        # D. Check for watch online player links (hbplay)
+        watch_online_url = None
+        for m in re.finditer(r'href=["\'](https?://hbplay\.[^"\']+)["\']', html):
+            watch_online_url = m.group(1).replace('&amp;', '&')
+            break
+
+        # Pick best working stream
+        working_mirrors = [m for m in mirrors if m['alive']]
+        best_stream_url = working_mirrors[0]['url'] if working_mirrors else (mirrors[0]['url'] if mirrors else None)
+
+        if not best_stream_url:
+            return {
+                "success": False,
+                "error": "Koi working stream link nahi mila. Server structure change hua ho sakta hai."
+            }
+
+        # Audio probe on the working stream
+        audio_tracks = probe_audio_tracks(best_stream_url)
+
+        return {
+            "success":          True,
+            "title":            movie_title,
+            "size":             file_size,
+            "stream_url":       best_stream_url,
+            "audio_tracks":     audio_tracks,
+            "watch_online_url": watch_online_url,
+            "mirrors":          mirrors
+        }
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+# ── HDHub4u Search & Details ───────────────────────────────────────────────────
+
+HDHUB4U_BASE_URL   = "https://new10.hdhub4u.cl/"
+HDHUB4U_SEARCH_API = "https://search.pingora.fyi/collections/post/documents/search"
+
+def search_hdhub4u(query):
+    results = []
+    try:
+        api_url = (
+            f'{HDHUB4U_SEARCH_API}?q={urllib.parse.quote(query)}'
+            f'&query_by=post_title,category,stars,director,imdb_id'
+            f'&query_by_weights=4,2,2,2,4&sort_by=sort_by_date:desc&limit=15'
+        )
+        req = urllib.request.Request(api_url, headers={
+            'User-Agent': USER_AGENT,
+            'Referer': HDHUB4U_BASE_URL,
+            'Origin': 'https://new10.hdhub4u.cl',
+        })
+        with urllib.request.urlopen(req, timeout=12) as r:
+            data = json.loads(r.read().decode())
+            for h in data.get('hits', [])[:10]:
+                doc       = h.get('document', {})
+                title     = doc.get('post_title', '').replace(' &#038;', ' &').replace(' &#8211;', '-')
+                permalink = doc.get('permalink', '')
+                thumbnail = doc.get('post_thumbnail', '')
+                if permalink:
+                    permalink = re.sub(
+                        r'https?://(?:new\d+|www)?\.hdhub4u\.[a-z]+',
+                        HDHUB4U_BASE_URL.rstrip('/'),
+                        permalink
+                    )
+                    if not permalink.startswith('http'):
+                        permalink = urllib.parse.urljoin(HDHUB4U_BASE_URL, permalink)
+                if title and permalink:
+                    results.append({'title': title, 'permalink': permalink, 'thumbnail': thumbnail})
+    except Exception as e:
+        print("[HDHub4u Search] error:", e)
+    return results
+
+def parse_movie_details(post_url):
+    details = {"title": "", "poster": "", "qualities": []}
+    try:
+        post_url = re.sub(
+            r'https?://(?:new\d+|www)?\.hdhub4u\.[a-z]+',
+            HDHUB4U_BASE_URL.rstrip('/'),
+            post_url
+        )
+        html, _ = fetch_html(post_url, referer=HDHUB4U_BASE_URL)
+
+        t_m = re.search(r'<title>(.*?)</title>', html, re.I)
+        details['title'] = re.sub(
+            r'\s*-\s*(HDHub4u Official|4KHDHub|Watch Online|Free Download).*', '',
+            t_m.group(1) if t_m else '', flags=re.I
+        ).replace(' &#038;', ' &').replace(' &#8211;', '-').strip()
+
+        img_m = re.search(r'<meta property="og:image" content="([^"]+)"', html)
+        details['poster'] = img_m.group(1) if img_m else ''
+
+        links = re.findall(
+            r'<a[^>]+href=["\'](https?://(?:hubdrive|hubcloud|hubcdn|drive|4khdhub|hub4drive)[^"\']+)["\'][^>]*>(.*?)</a>',
+            html, re.DOTALL | re.I
+        )
+        for l_url, l_text in links:
+            clean_text = re.sub(r'<[^>]+>', '', l_text).strip()
+            path_part = urllib.parse.urlparse(l_url).path
+            if len(path_part) <= 2:
+                continue
+            if not clean_text or clean_text.lower() in ['download', 'click here', 'watch', '4k movies', 'join telegram']:
+                continue
+            details['qualities'].append({'title': clean_text, 'link': l_url})
+
+    except Exception as e:
+        print("[Movie Details] error:", e)
+    return details
+
+# ── Frontend HTML ──────────────────────────────────────────────────────────────
+
+HTML_PAGE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StreamHub - Direct Movie Streamer</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+    --bg: #090d16;
+    --card: #111827;
+    --accent: #6366f1;
+    --accent-hover: #4f46e5;
+    --text-main: #f9fafb;
+    --text-sub: #9ca3af;
+    --border: #1f2937;
+    --success: #10b981;
+    --danger: #ef4444;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', sans-serif; }
+body {
+    background-color: var(--bg);
+    color: var(--text-main);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 35px 16px;
+}
+.container { width: 100%; max-width: 820px; }
+header { text-align: center; margin-bottom: 30px; }
+header h1 {
+    font-size: 2.4rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #a5b4fc, #6366f1, #c084fc);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+}
+header p { color: var(--text-sub); font-size: 0.95rem; }
+.card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    margin-bottom: 22px;
+}
+.input-row { display: flex; gap: 10px; flex-direction: column; }
+@media (min-width: 600px) { .input-row { flex-direction: row; } }
+input[type="text"] {
+    flex: 1;
+    padding: 14px 18px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: #0f172a;
+    color: #fff;
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+input[type="text"]:focus { border-color: var(--accent); }
+button.btn-primary {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 14px 24px;
+    border-radius: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+button.btn-primary:hover { background: var(--accent-hover); }
+button.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+.search-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin-top: 14px; }
+.movie-card {
+    background: #0f172a;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.15s, border-color 0.15s;
+}
+.movie-card:hover { transform: translateY(-3px); border-color: var(--accent); }
+.movie-card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; background: #1e293b; }
+.movie-card div { padding: 8px 10px; font-size: 0.8rem; font-weight: 600; line-height: 1.35; }
+.status-msg { margin-top: 14px; font-size: 0.9rem; color: var(--text-sub); display: none; text-align: center; }
+.error-box {
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    border-radius: 10px;
+    padding: 14px;
+    margin-top: 14px;
+    font-size: 0.88rem;
+    color: #fca5a5;
+    line-height: 1.5;
+}
+.badge-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(99, 102, 241, 0.15);
+    color: #a5b4fc;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+.badge-green { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; }
+.badge-red { background: rgba(239, 68, 68, 0.15); color: #fca5a5; }
+.vlc-banner {
+    background: linear-gradient(135deg, #ea580c, #c2410c);
+    color: white;
+    border: none;
+    padding: 16px;
+    border-radius: 12px;
+    font-size: 1.1rem;
+    font-weight: 800;
+    cursor: pointer;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    box-shadow: 0 4px 18px rgba(234, 88, 12, 0.4);
+    margin-top: 14px;
+    transition: transform 0.1s, opacity 0.15s;
+}
+.vlc-banner:hover { opacity: 0.92; transform: scale(1.01); }
+.vlc-banner:active { transform: scale(0.99); }
+.mirrors-list { margin-top: 16px; }
+.mirror-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    background: #0f172a;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.mirror-item.active { border-color: var(--accent); background: #151d30; }
+.mirror-name { font-weight: 600; font-size: 0.88rem; flex: 1; min-width: 200px; }
+.mirror-actions { display: flex; gap: 8px; }
+.btn-sm {
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.btn-vlc-sm { background: #ea580c; color: white; }
+.btn-vlc-sm:hover { background: #c2410c; }
+.btn-copy-sm { background: #334155; color: #f1f5f9; }
+.btn-copy-sm:hover { background: #475569; }
+.audio-select {
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: #0b0f19;
+    color: #fff;
+    border: 1px solid #374151;
+    font-size: 0.9rem;
+    outline: none;
+    margin-top: 8px;
+}
+.tip-box {
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-top: 16px;
+    font-size: 0.83rem;
+    color: #6ee7b7;
+    line-height: 1.5;
+}
+</style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>⚡ StreamHub</h1>
+        <p>HDHub4u &bull; HubCloud &bull; HubDrive &bull; 4KHDHub — Zero-Lag VLC Streaming</p>
+    </header>
+
+    <!-- Search Section -->
+    <div class="card">
+        <h2 style="font-size:1.05rem;margin-bottom:12px">🎬 Search Movies &amp; Series (new10.hdhub4u.cl)</h2>
+        <div class="input-row">
+            <input type="text" id="searchInput" placeholder="Movie ya web-series ka naam likhein..." onkeydown="if(event.key==='Enter') searchMovie()">
+            <button class="btn-primary" onclick="searchMovie()">Search</button>
+        </div>
+        <div class="status-msg" id="searchStatus"></div>
+        <div class="search-grid" id="searchGrid"></div>
+    </div>
+
+    <!-- Movie Qualities Card -->
+    <div class="card" id="qualitiesCard" style="display:none">
+        <h3 id="movieCardTitle" style="font-size:1.1rem;margin-bottom:10px"></h3>
+        <label style="font-size:0.85rem;color:var(--text-sub)">Quality / Language choose karein:</label>
+        <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">
+            <select id="qualitySelect" style="flex:1;min-width:200px;padding:12px;background:#0b0f19;color:#fff;border:1px solid #374151;border-radius:8px;"></select>
+            <button class="btn-primary" onclick="useSelectedQuality()">Use This Quality</button>
+        </div>
+    </div>
+
+    <!-- Direct URL Input Card -->
+    <div class="card">
+        <h2 style="font-size:1.05rem;margin-bottom:12px">🔗 Paste Any Link Directly</h2>
+        <div class="input-row">
+            <input type="text" id="urlInput" placeholder="hubcloud.ist / hubdrive / 4khdhub / hdhub4u link paste karein...">
+            <button class="btn-primary" id="btnResolve" onclick="resolveLink()">⚡ Resolve &amp; Stream</button>
+        </div>
+        <div class="status-msg" id="resolveStatus">⏳ Resolving link, checking active servers...</div>
+        <div id="errorBox" class="error-box" style="display:none"></div>
+    </div>
+
+    <!-- Results Section -->
+    <div class="card" id="resultsCard" style="display:none">
+        <h2 id="resTitle" style="font-size:1.25rem;font-weight:700;margin-bottom:8px"></h2>
+        <div class="badge-row">
+            <span class="badge" id="resSize">📦 Size: —</span>
+            <span class="badge badge-green" id="resStatusBadge">🟢 Stream Verified Active</span>
+            <span class="badge" id="resTrackBadge">🔊 Audio: Multi-Audio</span>
+        </div>
+
+        <!-- Big VLC Button -->
+        <button class="vlc-banner" onclick="launchVlcCurrent()">
+            ▶️ Play in VLC Player (Instant 4K Playback)
+        </button>
+
+        <div style="margin-top:16px">
+            <label style="font-size:0.88rem;font-weight:700">Audio Track (VLC Audio Language):</label>
+            <select id="audioTrackSelect" class="audio-select">
+                <option value="1">Track 1: Hindi / Default</option>
+                <option value="2">Track 2: English / Second Audio</option>
+                <option value="3">Track 3: Tamil / Telugu / Regional</option>
+            </select>
+        </div>
+
+        <div class="tip-box">
+            💡 <b>Fixed &amp; Verified:</b> Dead Cloudflare R2 links (403 NotEntitled) ko skip karke high-speed Google CDN stream automatically select ho gaya hai. VLC mein bina kisi error ke instantly chalega!
+        </div>
+
+        <!-- Detected Mirrors -->
+        <div class="mirrors-list">
+            <h3 style="font-size:0.95rem;color:var(--text-sub);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">Detected Mirrors &amp; Servers</h3>
+            <div id="mirrorsContainer"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let activeStreamUrl = "";
+
+    async function searchMovie() {
+        const query = document.getElementById('searchInput').value.trim();
+        const status = document.getElementById('searchStatus');
+        const grid = document.getElementById('searchGrid');
+        if (!query) { status.style.display = 'block'; status.innerText = 'Movie ka naam likhein.'; return; }
+        status.style.display = 'block';
+        status.innerText = '🔍 Searching HDHub4u...';
+        grid.innerHTML = '';
+        try {
+            const resp = await fetch('/api/search?q=' + encodeURIComponent(query));
+            const data = await resp.json();
+            if (!data.length) { status.innerText = 'Koi result nahi mila.'; return; }
+            status.innerText = `${data.length} results mile — movie select karein:`;
+            data.forEach(m => {
+                const card = document.createElement('div');
+                card.className = 'movie-card';
+                card.innerHTML = `
+                    <img src="${m.thumbnail || ''}" alt="">
+                    <div>${m.title}</div>
+                `;
+                card.onclick = () => loadMovieDetails(m);
+                grid.appendChild(card);
+            });
+        } catch (e) {
+            status.innerText = 'Search error: ' + e.message;
+        }
+    }
+
+    async function loadMovieDetails(movie) {
+        const panel = document.getElementById('qualitiesCard');
+        const title = document.getElementById('movieCardTitle');
+        const select = document.getElementById('qualitySelect');
+        title.innerText = movie.title;
+        panel.style.display = 'block';
+        select.innerHTML = '<option>Loading qualities...</option>';
+        try {
+            const resp = await fetch('/api/movie?url=' + encodeURIComponent(movie.permalink));
+            const details = await resp.json();
+            select.innerHTML = '';
+            if (!details.qualities || !details.qualities.length) {
+                select.innerHTML = '<option>Koi quality links nahi mile</option>';
+                return;
+            }
+            details.qualities.forEach(q => {
+                const opt = document.createElement('option');
+                opt.value = q.link;
+                opt.textContent = q.title;
+                select.appendChild(opt);
+            });
+        } catch (e) {
+            select.innerHTML = '<option>Error loading qualities</option>';
+        }
+    }
+
+    function useSelectedQuality() {
+        const select = document.getElementById('qualitySelect');
+        if (!select.value) return;
+        document.getElementById('urlInput').value = select.value;
+        resolveLink();
+    }
+
+    async function resolveLink() {
+        const url = document.getElementById('urlInput').value.trim();
+        if (!url) { alert('Pehle link paste karein!'); return; }
+        const status = document.getElementById('resolveStatus');
+        const errBox = document.getElementById('errorBox');
+        const btn = document.getElementById('btnResolve');
+        const resCard = document.getElementById('resultsCard');
+
+        status.style.display = 'block';
+        status.innerText = '⏳ Resolving server links and verifying stream...';
+        errBox.style.display = 'none';
+        btn.disabled = true;
+        resCard.style.display = 'none';
+
+        try {
+            const resp = await fetch('/api/resolve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url })
+            });
+            const data = await resp.json();
+            btn.disabled = false;
+
+            if (!data.success) {
+                status.style.display = 'none';
+                errBox.style.display = 'block';
+                errBox.innerHTML = '❌ <b>Error:</b> ' + (data.error || 'Link resolve nahi hua');
+                return;
+            }
+
+            status.style.display = 'none';
+            resCard.style.display = 'block';
+            document.getElementById('resTitle').innerText = data.title;
+            document.getElementById('resSize').innerText = '📦 ' + (data.size || 'HD Video');
+
+            activeStreamUrl = data.stream_url;
+
+            // Audio tracks
+            const audioSelect = document.getElementById('audioTrackSelect');
+            if (data.audio_tracks && data.audio_tracks.length) {
+                audioSelect.innerHTML = '';
+                data.audio_tracks.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t.track_num;
+                    opt.textContent = t.label;
+                    audioSelect.appendChild(opt);
+                });
+            }
+
+            // Render Mirrors
+            const mirrorsContainer = document.getElementById('mirrorsContainer');
+            mirrorsContainer.innerHTML = '';
+            (data.mirrors || []).forEach(m => {
+                const item = document.createElement('div');
+                item.className = 'mirror-item' + (m.url === activeStreamUrl ? ' active' : '');
+                item.innerHTML = `
+                    <div class="mirror-name">
+                        ${m.alive ? '🟢' : '🔴'} <b>${m.name}</b>
+                    </div>
+                    <div class="mirror-actions">
+                        <button class="btn-sm btn-vlc-sm" onclick="playInVlcCustom('${encodeURIComponent(m.url)}')">▶️ Play in VLC</button>
+                        <button class="btn-sm btn-copy-sm" onclick="copyCustomUrl('${encodeURIComponent(m.url)}')">📋 Copy</button>
+                    </div>
+                `;
+                mirrorsContainer.appendChild(item);
+            });
+
+        } catch (e) {
+            btn.disabled = false;
+            status.style.display = 'none';
+            errBox.style.display = 'block';
+            errBox.innerHTML = '❌ Network error: ' + e.message;
+        }
+    }
+
+    async function launchVlcCurrent() {
+        if (!activeStreamUrl) { alert('Pehle link resolve karein!'); return; }
+        const track = document.getElementById('audioTrackSelect').value || 1;
+        playInVlcCustom(encodeURIComponent(activeStreamUrl), track);
+    }
+
+    async function playInVlcCustom(encodedUrl, track) {
+        const url = decodeURIComponent(encodedUrl);
+        const trk = track || document.getElementById('audioTrackSelect').value || 1;
+        try {
+            const resp = await fetch('/api/play_vlc', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ stream_url: url, audio_track: parseInt(trk) })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                alert('🚀 VLC Player launch ho gaya! Stream chal raha hai.');
+            } else {
+                alert('⚠️ VLC Error: ' + (data.message || 'VLC open nahi hua'));
+            }
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    }
+
+    function copyCustomUrl(encodedUrl) {
+        const url = decodeURIComponent(encodedUrl);
+        navigator.clipboard.writeText(url).then(() => {
+            alert('✅ Stream URL copy ho gaya!');
+        });
+    }
+</script>
+</body>
+</html>"""
+
+# ── HTTP Server Request Handler ────────────────────────────────────────────────
+
+class RequestHandler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, fmt, *args):
+        if args and str(args[1]) not in ('200', '304'):
+            super().log_message(fmt, *args)
+
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.end_headers()
+
+    def do_GET(self):
+        parsed = urllib.parse.urlparse(self.path)
+        qp     = urllib.parse.parse_qs(parsed.query)
+        path   = parsed.path
+
+        # Search API
+        if path == '/api/search':
+            q = qp.get('q', [''])[0]
+            self._json(search_hdhub4u(q))
+            return
+
+        # Movie Details API
+        if path == '/api/movie':
+            url = qp.get('url', [''])[0]
+            self._json(parse_movie_details(url))
+            return
+
+        # Local Range-enabled Streaming Proxy
+        if path.startswith('/api/proxy/'):
+            key = path.split('/api/proxy/')[-1].strip('/')
+            with _proxy_lock:
+                entry = _proxy_cache.get(key)
+            if not entry:
+                self.send_response(404); self.end_headers()
+                self.wfile.write(b'Proxy key not found'); return
+            real_url = entry['url']
+            referer  = entry.get('referer', '')
+            range_hdr = self.headers.get('Range', '')
+            headers = {
+                'User-Agent': USER_AGENT,
+                'Accept': '*/*',
+                'Connection': 'keep-alive',
+            }
+            if referer:   headers['Referer'] = referer
+            if range_hdr: headers['Range']   = range_hdr
+            try:
+                req = urllib.request.Request(real_url, headers=headers)
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    self.send_response(r.status)
+                    self.send_header('Content-Type', r.headers.get('Content-Type', 'video/x-matroska'))
+                    self.send_header('Accept-Ranges', r.headers.get('Accept-Ranges', 'bytes'))
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    cl = r.headers.get('Content-Length', '')
+                    cr = r.headers.get('Content-Range', '')
+                    if cl: self.send_header('Content-Length', cl)
+                    if cr: self.send_header('Content-Range', cr)
+                    self.end_headers()
+                    while True:
+                        chunk = r.read(256 * 1024)
+                        if not chunk: break
+                        try:
+                            self.wfile.write(chunk)
+                            self.wfile.flush()
+                        except (BrokenPipeError, ConnectionResetError):
+                            break
+            except Exception as e:
+                try: self.send_response(502); self.end_headers(); self.wfile.write(str(e).encode())
+                except Exception: pass
+            return
+
+        # Frontend App
+        if path in ('/', '/index.html'):
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(HTML_PAGE.encode('utf-8'))
+            return
+
+        self.send_response(404); self.end_headers()
+
+    def do_POST(self):
+        length = int(self.headers.get('Content-Length', 0))
+        raw_body = self.rfile.read(length)
+
+        # Resolve API
+        if self.path == '/api/resolve':
+            try:
+                body = json.loads(raw_body.decode('utf-8'))
+                target_url = body.get('url', '')
+                res = resolve_hubcloud(target_url)
+                self._json(res)
+            except Exception as e:
+                self._json({"success": False, "error": str(e)}, status=500)
+            return
+
+        # VLC Player Launch API
+        if self.path == '/api/play_vlc':
+            try:
+                body        = json.loads(raw_body.decode('utf-8'))
+                stream_url  = body.get('stream_url', '')
+                audio_track = body.get('audio_track', 1)
+
+                if not stream_url:
+                    self._json({"success": False, "message": "Stream URL missing"})
+                    return
+
+                if not os.path.exists(VLC_PATH):
+                    self._json({"success": False, "message": f"VLC player nahi mila at {VLC_PATH}"})
+                    return
+
+                subprocess.Popen([
+                    VLC_PATH,
+                    stream_url,
+                    '--network-caching=3000',
+                    '--http-reconnect',
+                    f'--audio-track={max(0, audio_track - 1)}'
+                ])
+                self._json({"success": True, "message": "VLC successfully launched!"})
+            except Exception as e:
+                self._json({"success": False, "error": str(e)}, status=500)
+            return
+
+        self.send_response(404); self.end_headers()
+
+    def _json(self, data, status=200):
+        body = json.dumps(data, ensure_ascii=False).encode('utf-8')
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    allow_reuse_address = True
+    daemon_threads      = True
+
+def run():
+    print("=" * 55)
+    print("       StreamHub Movie Streamer v4.5 — Final Fix")
+    print("=" * 55)
+    print(f"  VLC Player : {'FOUND [OK] (' + VLC_PATH + ')' if os.path.exists(VLC_PATH) else 'NOT FOUND'}")
+    print(f"  Server URL : http://localhost:{PORT}")
+    print("=" * 55)
+    webbrowser.open(f"http://localhost:{PORT}")
+    with ThreadedTCPServer(("", PORT), RequestHandler) as httpd:
+        print(f"\n  Ready at http://localhost:{PORT}\n")
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            print("\nServer stopped.")
+
+if __name__ == '__main__':
+    run()

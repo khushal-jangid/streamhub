@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+*.pyo
+
+# Build artifacts — sirf source code commit hoga
+build/work/
+build/vlc_stage/
+build/vlc_runtime.zip
+dist/StreamHub.exe
+
+# Executables — GitHub Release par upload hoti hain
+StreamHub.exe
+StreamHub.apk
+
+# Logs & temp
+*.log
+update.log
+streamhub_progress.json
+*.tmp
