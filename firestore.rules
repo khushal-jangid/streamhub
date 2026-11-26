@@ -27,6 +27,12 @@ service cloud.firestore {
     //       immutable by clients)
     //   - created_at: timestamp | null (optional admin metadata,
     //       immutable by clients)
+    //   - allow_4k: bool | null (optional admin plan flag, immutable by
+    //       clients; controls whether 4K Ultra / 2160p playback & 4K Vault
+    //       are unlocked, e.g. false for <=3 months, true for 6M/1Y plans)
+    //   - price_inr: int | null (optional admin plan metadata, 0..100000,
+    //       immutable by clients; plan price in INR, e.g. 29, 49, 119, 199,
+    //       349)
     //
     // Security & Access Model Notes:
     //   - Database: streamhub-vip / (default) Standard edition.
@@ -132,7 +138,9 @@ service cloud.firestore {
                'device_ids',
                'activated_at',
                'label',
-               'created_at'
+               'created_at',
+               'allow_4k',
+               'price_inr'
              ]) &&
              data.code is string &&
              data.code == keyCode &&
@@ -149,7 +157,9 @@ service cloud.firestore {
              data.activated_at is timestamp &&
              isValidDeviceIdList(data.device_ids, data.max_devices) &&
              (!('label' in data) || data.label == null || (data.label is string && data.label.size() <= 500)) &&
-             (!('created_at' in data) || data.created_at == null || data.created_at is timestamp);
+             (!('created_at' in data) || data.created_at == null || data.created_at is timestamp) &&
+             (!('allow_4k' in data) || data.allow_4k == null || data.allow_4k is bool) &&
+             (!('price_inr' in data) || data.price_inr == null || (data.price_inr is int && data.price_inr >= 0 && data.price_inr <= 100000));
     }
 
     // ===============================================================
@@ -220,7 +230,9 @@ service cloud.firestore {
                'max_devices',
                'revoked',
                'label',
-               'created_at'
+               'created_at',
+               'allow_4k',
+               'price_inr'
              ]) &&
              isValidVipKey(request.resource.data, keyCode) &&
              isValidDeviceListAppend() &&

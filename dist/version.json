@@ -1,13 +1,13 @@
 {
-    "version":  "2.6.0",
+    "version":  "2.6.1",
     "download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.0/StreamHub.exe",
     "sha256":  "7723fd9cd24e81c3efbf87c8184fecdbb37191504e6e82c85a7adcd7a5a2250c",
     "size_bytes":  87698023,
-    "apk_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.6.0/StreamHub.apk",
-    "apk_sha256":  "12cda9f2810f774638a4ce4a205ad0ef2397de28ef7a69d725938e123e18efbf",
-    "apk_size_bytes":  78102568,
-    "py_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.6.0/streamhub_app.py",
-    "py_sha256":  "55db66300e5f64e5461d9fdf9279bc3cea07a5dbfa9f37fd940d7c472b4d944b",
-    "min_apk_version_code":  14,
-    "notes":  "v2.6.0 (Full APK): Added Firebase VIP Key lock/unlock system (supports 1s/2s/5s/10s test keys + 1-device lock + live player expiry check), built-in DoH (1.1.1.1/8.8.8.8) \u0026 4KHDHub fallback to fix catalog loading on Indian 4G SIMs, plus PC VIP Admin Panel."
+    "apk_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.6.1/StreamHub.apk",
+    "apk_sha256":  "3fd07079f3d69fd0230663e3eeccd9abab0512538d1c3520a3f1379cbd375f17",
+    "apk_size_bytes":  78106848,
+    "py_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.6.1/streamhub_app.py",
+    "py_sha256":  "e512fa4368baea4d6eebe4b8f82724bc92c25a45ac81a355d82883a70d12816c",
+    "min_apk_version_code":  15,
+    "notes":  "v2.6.1 (Full APK): Added 5 VIP Pricing Plans (15 Days Rs 29, 1 Month Rs 49, 3 Months Rs 119 with 4K Locked; 6 Months Rs 199 and 1 Year Rs 349 with 4K HDR Unlocked) + in-player 4K lock \u0026 upgrade prompt + updated Admin Panel."
 }

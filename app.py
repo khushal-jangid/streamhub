@@ -176,7 +176,7 @@ if sys.platform == 'win32':
     except Exception:
         pass
 
-APP_VERSION = "2.6.0"
+APP_VERSION = "2.6.1"
 DEFAULT_UPDATE_URL = "khushal-jangid/streamhub"
 STREAMHUB_UPDATE_URL = os.environ.get("STREAMHUB_UPDATE_URL", "").strip()
 _ENV_DATA_DIR = os.environ.get("STREAMHUB_DATA_DIR", "").strip()
@@ -538,15 +538,16 @@ def get_network_speed_payload():
         stale = (time.time() - _BW_UPDATED_AT) > 45.0
         bps = 0 if stale else int(_BW_EWMA_BPS)
     mbps = round((bps * 8.0) / 1_000_000.0, 2) if bps > 0 else 0.0
+    allow_4k = is_4k_unlocked()
     if bps <= 0 or bps < 1_100_000:
         rec = "480p"
     elif bps < 2_800_000:
         rec = "720p"
-    elif bps < 7_500_000:
+    elif bps < 7_500_000 or not allow_4k:
         rec = "1080p"
     else:
         rec = "4K UHD"
-    return {"success": True, "bps": bps, "mbps": mbps, "recommended_quality": rec, "stale": stale}
+    return {"success": True, "bps": bps, "mbps": mbps, "recommended_quality": rec, "allow_4k": allow_4k, "stale": stale}
 
 def _read_ebml_vint(buf, pos, keep_flag=False):
     if pos >= len(buf):
@@ -5386,9 +5387,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     white-space: nowrap; flex-shrink: 0;
 }
 .vip-nav-pill.unlocked {
-    border-color: rgba(34, 197, 94, 0.45);
-    background: rgba(34, 197, 94, 0.15);
+    border-color: rgba(34, 197, 94, 0.5);
+    background: rgba(34, 197, 94, 0.16);
     color: #86efac;
+}
+.vip-nav-pill.hd-only {
+    border-color: rgba(56, 189, 248, 0.5);
+    background: rgba(56, 189, 248, 0.16);
+    color: #7dd3fc;
 }
 .vip-card-lock {
     display: none;
@@ -5398,6 +5404,31 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     color: #facc15; align-items: center; justify-content: center;
     box-shadow: 0 6px 20px rgba(0,0,0,0.7); pointer-events: none;
 }
+.vip-4k-lock {
+    display: none;
+    position: absolute; bottom: 8px; right: 8px;
+    z-index: 3; padding: 3px 7px; border-radius: 6px;
+    background: rgba(10, 12, 20, 0.9); border: 1px solid rgba(234, 179, 8, 0.75);
+    color: #fde047; font-size: 0.65rem; font-weight: 900; letter-spacing: 0.4px;
+    pointer-events: none;
+}
+body.sh-vip-locked .vip-card-lock { display: inline-flex; }
+body.sh-vip-4k-locked .vip-4k-lock { display: inline-flex; }
+.vip-plans-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+    gap: 7px; margin-bottom: 11px;
+}
+.vip-plan-item {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 8px 9px; text-align: left; cursor: pointer; color: var(--text);
+    transition: border-color 0.15s, background 0.15s;
+}
+.vip-plan-item.ultra { border-color: rgba(234, 179, 8, 0.45); background: rgba(234, 179, 8, 0.06); }
+.vip-plan-item.selected { border-color: #eab308; background: rgba(234, 179, 8, 0.16); }
+.vip-plan-name { font-size: 0.74rem; font-weight: 800; color: #fff; }
+.vip-plan-price { font-size: 1rem; font-weight: 900; color: #fde047; margin: 1px 0; }
+.vip-plan-sub { font-size: 0.65rem; color: var(--text-muted); line-height: 1.25; }
+.vip-plan-sub.gold { color: #fde047; font-weight: 700; }
 body.sh-vip-locked .vip-card-lock { display: inline-flex; }
 body.sh-vip-locked .hover-play { display: none !important; }
 body.sh-vip-locked .poster-wrap img,
@@ -6882,15 +6913,15 @@ html, body { max-width: 100%; overflow-x: hidden; }
 
 <!-- VIP Redeem Key / Unlock Modal -->
 <div class="modal-overlay fullscreen-mobile sh-full-page" id="vipUnlockModal" onclick="if(event.target===this) closeVipUnlockModal()" role="dialog" aria-modal="true" aria-labelledby="vipUnlockTitle">
-    <div class="startup-update-card">
+    <div class="startup-update-card" style="max-width:460px;max-height:92vh;overflow-y:auto;">
         <div class="startup-update-head">
             <div style="display:flex;align-items:center;gap:11px;min-width:0;">
                 <span class="startup-update-ico" style="background:rgba(234,179,8,0.16);border-color:rgba(234,179,8,0.45);color:#facc15;">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                 </span>
                 <div style="min-width:0;">
-                    <div style="font-size:0.68rem;font-weight:700;color:#facc15;letter-spacing:0.7px;text-transform:uppercase;">StreamHub VIP Pass</div>
-                    <h2 id="vipUnlockTitle" style="font-size:1rem;font-weight:800;color:#fff;line-height:1.25;">Unlock All Movies &amp; 4K</h2>
+                    <div style="font-size:0.68rem;font-weight:700;color:#facc15;letter-spacing:0.7px;text-transform:uppercase;">StreamHub VIP Plans</div>
+                    <h2 id="vipUnlockTitle" style="font-size:1rem;font-weight:800;color:#fff;line-height:1.25;">Unlock All Movies, Series &amp; 4K</h2>
                 </div>
             </div>
             <button type="button" class="btn-close-card" onclick="closeVipUnlockModal()" aria-label="Close VIP modal">
@@ -6903,24 +6934,27 @@ html, body { max-width: 100%; overflow-x: hidden; }
             <span class="startup-ver-pill" id="vipModalDevicePill">1 Key = 1 Device</span>
         </div>
 
-        <div id="vipModalDesc" style="font-size:0.78rem;color:var(--text-muted);margin-bottom:12px;line-height:1.45;">
-            Movies, Web Series aur Downloads chalane ke liye apna VIP Key code daalein.
+        <div id="vipModalDesc" style="font-size:0.77rem;color:var(--text-muted);margin-bottom:10px;line-height:1.45;">
+            15 Days se 3 Months tak sab HD/1080p unlocked (4K Locked). 6 Months &amp; 1 Year par 4K HDR bhi unlock!
         </div>
 
+        <div id="vipActiveWrap" style="display:none;margin-bottom:10px;">
+            <div id="vipActiveBox" class="startup-update-notes" style="color:#86efac;border-color:rgba(34,197,94,0.34);background:rgba(34,197,94,0.08);"></div>
+            <div class="startup-update-actions">
+                <button type="button" class="btn-sm btn-indigo-sm" style="flex:1 1 140px;min-height:40px;" onclick="refreshVipStatus(true)">Verify Server</button>
+                <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 140px;min-height:40px;color:#fca5a5;border-color:rgba(239,68,68,0.35);" onclick="lockVipForTest()">Lock App (Test)</button>
+            </div>
+        </div>
+
+        <div class="vip-plans-grid" id="vipPlansGrid"></div>
+        <div id="vipSelectedPlanNote" style="display:none;font-size:0.74rem;color:#fde047;background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.3);border-radius:8px;padding:7px 10px;margin-bottom:10px;"></div>
+
         <div id="vipKeyEntryWrap">
-            <input type="text" id="vipKeyInput" class="vip-key-input" placeholder="e.g. SHVIP-5SEC-1234" autocomplete="off" autocapitalize="characters" onkeydown="if(event.key==='Enter') submitVipKey()">
+            <input type="text" id="vipKeyInput" class="vip-key-input" placeholder="Enter VIP Key (e.g. SHVIP-6M4K-XXXX)" autocomplete="off" autocapitalize="characters" onkeydown="if(event.key==='Enter') submitVipKey()">
             <div id="vipModalErr" class="vip-err-box"></div>
             <div class="startup-update-actions">
                 <button type="button" id="btnVipActivate" class="vlc-banner" style="flex:1 1 180px;min-height:44px;font-size:0.9rem;justify-content:center;" onclick="submitVipKey()">Unlock with Key</button>
                 <button type="button" class="btn-sm btn-copy-sm" style="min-height:44px;padding:0 14px;" onclick="closeVipUnlockModal()">Close</button>
-            </div>
-        </div>
-
-        <div id="vipActiveWrap" style="display:none;">
-            <div id="vipActiveBox" class="startup-update-notes" style="color:#86efac;border-color:rgba(34,197,94,0.34);background:rgba(34,197,94,0.08);"></div>
-            <div class="startup-update-actions">
-                <button type="button" class="btn-sm btn-indigo-sm" style="flex:1 1 140px;min-height:42px;" onclick="refreshVipStatus(true)">Verify Server</button>
-                <button type="button" class="btn-sm btn-copy-sm" style="flex:1 1 140px;min-height:42px;color:#fca5a5;border-color:rgba(239,68,68,0.35);" onclick="lockVipForTest()">Lock App (Test)</button>
             </div>
         </div>
     </div>
@@ -7680,6 +7714,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         const rInfo = ratingsMap[m.permalink] || (m.imdb_id ? ratingsMap[m.imdb_id] : null);
         const rBadge = (rInfo && rInfo.rating) ? `<span class="imdb-mini">IMDb ${rInfo.rating}</span>` : '';
 
+        const is4kPoster = (m.source === '4khdhub') || /2160p|\b4k\b|uhd|ds4k/i.test(`${m.title || ''} ${qTag}`);
         card.innerHTML = `
             <div class="poster-wrap">
                 <img src="${esc(m.thumbnail || '')}" alt="${esc(titleTxt)}" loading="lazy">
@@ -7695,6 +7730,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="7 4 20 12 7 20 7 4"/></svg>
                 </div>
                 <span class="vip-card-lock" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+                ${is4kPoster ? '<span class="vip-4k-lock" aria-hidden="true">4K 6M+</span>' : ''}
             </div>
             <div class="movie-card-info">
                 <div class="movie-card-title">${esc(titleTxt)}</div>
@@ -9429,7 +9465,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
             if (!data || !data.success || !data.target) {
                 if (data && data.vip_required) {
                     refreshVipStatus(false);
-                    openVipUnlockModal(false);
+                    openVipUnlockModal(false, Boolean(data.upgrade_4k_required));
                 }
                 showToast('Player Error: ' + ((data && (data.message || data.error)) || 'Stream ready nahi hua'), 'err');
                 return;
@@ -9815,9 +9851,44 @@ html, body { max-width: 100%; overflow-x: hidden; }
         'dlSettingsPageModal', 'toolsPageModal', 'updateModalOverlay', 'downloadsModalOverlay', 'hub4kPageModal'
     ];
 
-    let vipState = { active: false, remaining_sec: 0, unlockUntilPerfMs: 0, code: '', label: '', max_devices: 1, device_id: '', reason: '' };
+    let vipState = {
+        active: false, remaining_sec: 0, unlockUntilPerfMs: 0, code: '', label: '',
+        max_devices: 1, allow_4k: false, price_inr: null, device_id: '', reason: '',
+        plans: [
+            { id: '15d', name: '15 Days', sub: 'HD / 1080p', duration_seconds: 1296000, price_inr: 29, allow_4k: false, badge: '4K Locked' },
+            { id: '30d', name: '1 Month', sub: 'HD / 1080p', duration_seconds: 2592000, price_inr: 49, allow_4k: false, badge: '4K Locked' },
+            { id: '3m', name: '3 Months', sub: 'HD / 1080p', duration_seconds: 7776000, price_inr: 119, allow_4k: false, badge: '4K Locked' },
+            { id: '6m', name: '6 Months', sub: 'All + 4K HDR', duration_seconds: 15552000, price_inr: 199, allow_4k: true, badge: '4K Unlocked' },
+            { id: '1y', name: '1 Year', sub: 'All 4K + VIP', duration_seconds: 31536000, price_inr: 349, allow_4k: true, badge: 'Best Value 4K' }
+        ]
+    };
     let pendingVipAction = null;
     let vipTickerTimer = null;
+    let selectedPlanIdUi = '6m';
+
+    function _renderVipPlansGrid(highlight4k) {
+        const grid = document.getElementById('vipPlansGrid');
+        if (!grid) return;
+        const plans = vipState.plans || [];
+        grid.innerHTML = '';
+        plans.forEach(p => {
+            if (highlight4k && vipState.active && !vipState.allow_4k && !p.allow_4k) return;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'vip-plan-item' + (p.allow_4k ? ' ultra' : '') + (selectedPlanIdUi === p.id ? ' selected' : '');
+            btn.innerHTML = `<div class="vip-plan-name">${esc(p.name)}</div><div class="vip-plan-price">&#8377;${p.price_inr}</div><div class="vip-plan-sub ${p.allow_4k ? 'gold' : ''}">${esc(p.allow_4k ? '4K UHD Unlocked' : '4K Locked • HD/FHD')}</div>`;
+            btn.onclick = () => {
+                selectedPlanIdUi = p.id;
+                const note = document.getElementById('vipSelectedPlanNote');
+                if (note) {
+                    note.textContent = `Selected: ${p.name} (Rs ${p.price_inr}) — ${p.allow_4k ? 'All Movies + 4K Ultra Unlocked!' : 'All HD/1080p Movies Unlocked (4K Locked)'}. Admin se Key lekar niche daalein.`;
+                    note.style.display = 'block';
+                }
+                _renderVipPlansGrid(highlight4k);
+            };
+            grid.appendChild(btn);
+        });
+    }
 
     function _fmtVipRem(sec) {
         const s = Math.max(0, Math.ceil(Number(sec || 0)));
@@ -9842,26 +9913,38 @@ html, body { max-width: 100%; overflow-x: hidden; }
         return Math.max(0, (vipState.unlockUntilPerfMs - performance.now()) / 1000);
     }
 
-    function applyVipUiState() {
+    function applyVipUiState(upgrade4kMode) {
         const rem = _vipRemainingNow();
         const isActive = Boolean(vipState.active && rem > 0);
         if (!isActive && vipState.active) {
             vipState.active = false;
+            vipState.allow_4k = false;
             vipState.remaining_sec = 0;
             vipState.reason = vipState.reason || 'VIP Key expire ho chuki hai — naya key daalein';
         }
+        const is4kLocked = isActive && !vipState.allow_4k;
         document.body.classList.toggle('sh-vip-locked', !isActive);
+        document.body.classList.toggle('sh-vip-4k-locked', is4kLocked);
 
         const navPill = document.getElementById('btnVipNavPill');
         const navLbl = document.getElementById('btnVipNavLabel');
-        if (navPill) navPill.classList.toggle('unlocked', isActive);
-        if (navLbl) navLbl.textContent = isActive ? `VIP ${_fmtVipRem(rem)}` : 'VIP Locked';
+        if (navPill) {
+            navPill.classList.toggle('unlocked', isActive && vipState.allow_4k);
+            navPill.classList.toggle('hd-only', is4kLocked);
+        }
+        if (navLbl) {
+            navLbl.textContent = !isActive ? 'VIP Locked' : (vipState.allow_4k ? `4K VIP ${_fmtVipRem(rem)}` : `HD VIP ${_fmtVipRem(rem)}`);
+        }
 
         const heroLbl = document.getElementById('btnHeroPlayLabel');
         if (heroLbl) heroLbl.textContent = isActive ? 'Watch Now' : 'Unlock to Watch';
 
         const menuSub = document.getElementById('menuSubVip');
-        if (menuSub) menuSub.textContent = isActive ? `Active • ${_fmtVipRem(rem)} left (${vipState.code})` : 'Locked • Tap to Enter Key';
+        if (menuSub) {
+            menuSub.textContent = isActive
+                ? `${vipState.allow_4k ? '4K Ultra' : 'HD/1080p Only'} • ${_fmtVipRem(rem)} left (${vipState.code})`
+                : 'Locked • Plans from Rs 29 (15 Days)';
+        }
 
         const stPill = document.getElementById('vipModalStatePill');
         const devPill = document.getElementById('vipModalDevicePill');
@@ -9871,23 +9954,33 @@ html, body { max-width: 100%; overflow-x: hidden; }
         const desc = document.getElementById('vipModalDesc');
 
         if (stPill) {
-            stPill.textContent = isActive ? `Active • ${_fmtVipRem(rem)} left` : 'Status: Locked';
+            stPill.textContent = !isActive
+                ? 'Status: Locked'
+                : (vipState.allow_4k ? `4K VIP • ${_fmtVipRem(rem)} left` : `HD VIP • ${_fmtVipRem(rem)} (4K Locked)`);
             stPill.classList.toggle('new', isActive);
         }
         if (devPill) {
             const did = vipState.device_id ? ` • ${String(vipState.device_id).slice(0, 8)}` : '';
             devPill.textContent = `1 Key = ${vipState.max_devices || 1} Device${did}`;
         }
-        if (entryWrap) entryWrap.style.display = isActive ? 'none' : 'block';
+        const showEntry = (!isActive) || (is4kLocked && Boolean(upgrade4kMode));
+        if (entryWrap) entryWrap.style.display = showEntry ? 'block' : 'none';
         if (activeWrap) activeWrap.style.display = isActive ? 'block' : 'none';
         if (desc) {
-            desc.textContent = isActive
-                ? 'Aapka VIP Pass active hai — sabhi movies, web series aur downloads unlocked hain.'
-                : (vipState.reason || 'Movies, Web Series aur Downloads chalane ke liye apna VIP Key code daalein.');
+            if (is4kLocked && upgrade4kMode) {
+                desc.textContent = 'Aapke plan me 4K UHD locked hai! 4K Movies & Cinema Vault ke liye 6 Months (Rs 199) ya 1 Year (Rs 349) ka key daalein:';
+            } else if (isActive) {
+                desc.textContent = vipState.allow_4k
+                    ? '4K Ultra VIP active hai — sabhi HD + 4K HDR movies, series & downloads unlocked hain!'
+                    : 'HD VIP active hai — sabhi HD/1080p movies & downloads unlocked hain (4K ke liye 6M/1Y plan chahiye).';
+            } else {
+                desc.textContent = vipState.reason || '15 Days se 3 Months tak sab HD/1080p unlocked (4K Locked). 6 Months & 1 Year par 4K HDR bhi unlock!';
+            }
         }
         if (activeBox && isActive) {
-            activeBox.textContent = `Key: ${vipState.code}\nPlan: ${vipState.label || 'VIP Pass'}\nTime Left: ${_fmtVipRem(rem)}\nDevice Lock: ${(vipState.device_id || '').slice(0, 12)} (1/${vipState.max_devices || 1})`;
+            activeBox.textContent = `Key: ${vipState.code}\nPlan: ${vipState.label || 'VIP Pass'}\nQuality Limit: ${vipState.allow_4k ? 'ALL + 4K ULTRA UNLOCKED' : '480p / 720p / 1080p (4K Locked)'}\nTime Left: ${_fmtVipRem(rem)} | Device 1/${vipState.max_devices || 1}`;
         }
+        _renderVipPlansGrid(Boolean(upgrade4kMode && is4kLocked));
     }
 
     function _restartVipTicker() {
@@ -9901,9 +9994,10 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 clearInterval(vipTickerTimer);
                 vipTickerTimer = null;
                 vipState.active = false;
+                vipState.allow_4k = false;
                 vipState.remaining_sec = 0;
                 vipState.reason = 'VIP Key ka time khatam ho gaya — naya key daalein';
-                applyVipUiState();
+                applyVipUiState(false);
                 try {
                     const iw = document.getElementById('inlineWebPlayerModal');
                     if (iw && iw.classList.contains('open')) closeInlinePlayer();
@@ -9912,7 +10006,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 fetch('/api/vip/status').catch(() => {});
                 return;
             }
-            applyVipUiState();
+            applyVipUiState(false);
             if (stepMs > 500 && rem <= 120) _restartVipTicker();
         }, stepMs);
     }
@@ -9922,6 +10016,9 @@ html, body { max-width: 100%; overflow-x: hidden; }
         const wasActive = vipState.active;
         const rem = Math.max(0, Number(d.remaining_sec || 0));
         vipState.active = Boolean(d.active && rem > 0);
+        vipState.allow_4k = Boolean(vipState.active && d.allow_4k);
+        vipState.price_inr = d.price_inr !== undefined ? d.price_inr : vipState.price_inr;
+        if (Array.isArray(d.plans) && d.plans.length) vipState.plans = d.plans;
         vipState.remaining_sec = rem;
         vipState.unlockUntilPerfMs = vipState.active ? (performance.now() + rem * 1000) : 0;
         vipState.code = String(d.code || '');
@@ -9929,7 +10026,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         vipState.max_devices = Number(d.max_devices || 1);
         vipState.device_id = String(d.device_id || '');
         vipState.reason = String(d.reason || '');
-        applyVipUiState();
+        applyVipUiState(false);
         _restartVipTicker();
         if (wasActive && !vipState.active) {
             showToast(vipState.reason || 'VIP Key expire ho chuki hai', 'err');
@@ -9943,21 +10040,24 @@ html, body { max-width: 100%; overflow-x: hidden; }
             _syncVipPayload(d);
             return d;
         } catch (e) {
-            applyVipUiState();
+            applyVipUiState(false);
             return null;
         }
     }
 
-    window.openVipUnlockModal = function(fromPlayer) {
+    window.openVipUnlockModal = function(fromPlayer, upgrade4kMode) {
         dismissIntro();
         const errBox = document.getElementById('vipModalErr');
+        const noteBox = document.getElementById('vipSelectedPlanNote');
         if (errBox) { errBox.style.display = 'none'; errBox.textContent = ''; }
-        applyVipUiState();
+        if (noteBox) { noteBox.style.display = 'none'; }
+        const upgMode = Boolean(upgrade4kMode) || (vipState.active && !vipState.allow_4k && Boolean(fromPlayer));
+        applyVipUiState(upgMode);
         const ov = document.getElementById('vipUnlockModal');
         if (ov) ov.classList.add('open');
         _syncFullPageView();
-        refreshVipStatus(Boolean(fromPlayer));
-        if (!vipState.active) {
+        if (!upgMode) refreshVipStatus(Boolean(fromPlayer));
+        if (!vipState.active || upgMode) {
             setTimeout(() => {
                 const inp = document.getElementById('vipKeyInput');
                 if (inp) inp.focus();
@@ -10053,6 +10153,10 @@ html, body { max-width: 100%; overflow-x: hidden; }
     }
 
     function openHub4kMovie(movie) {
+        if (vipState.active && !vipState.allow_4k) {
+            window.openVipUnlockModal(false, true);
+            return;
+        }
         _savedMainScrollY = 0;
         closeHub4kModal();
         openTitleNetflixStyle(movie);
@@ -10451,14 +10555,19 @@ html, body { max-width: 100%; overflow-x: hidden; }
             qWrap.innerHTML = '';
             dlPickerState.options.forEach((opt, i) => {
                 const tag = _inferQualityTag(opt.label);
+                const is4kOpt = /2160p|\b4k\b|uhd|ds4k/i.test(String(opt.label || ''));
+                const locked4kOpt = Boolean(vipState.active && !vipState.allow_4k && is4kOpt);
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'dl-q-pill' + (i === dlPickerState.selectedIdx ? ' active' : '');
                 btn.style.cssText = 'text-align:left;display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;';
                 const hintTag = /480p/i.test(tag.res) ? 'Low Size' : (/720p/i.test(tag.res) ? 'Balanced HD' : '');
-                const szText = opt.size_label || tag.size || hintTag || 'Direct';
-                btn.innerHTML = `<span style="font-weight:800;overflow:hidden;text-overflow:ellipsis;">${esc(opt.label)}</span><span style="font-size:0.72rem;opacity:0.9;white-space:nowrap;">${esc(szText)}</span>`;
-                btn.onclick = () => { dlPickerState.selectedIdx = i; renderDownloadPickerChoices(); };
+                const szText = locked4kOpt ? 'LOCKED (6M+ Plan)' : (opt.size_label || tag.size || hintTag || 'Direct');
+                btn.innerHTML = `<span style="font-weight:800;overflow:hidden;text-overflow:ellipsis;">${esc(opt.label)}</span><span style="font-size:0.72rem;opacity:0.9;white-space:nowrap;${locked4kOpt ? 'color:#fde047;font-weight:800;' : ''}">${esc(szText)}</span>`;
+                btn.onclick = () => {
+                    if (locked4kOpt) { closeDownloadPicker(); window.openVipUnlockModal(false, true); return; }
+                    dlPickerState.selectedIdx = i; renderDownloadPickerChoices();
+                };
                 qWrap.appendChild(btn);
             });
         }
@@ -13311,11 +13420,25 @@ def _prepare_play_target(body, srv_port=None):
             if selected_q_id is None:
                 hdhub_link = ''
 
+    allow_4k_cur = is_4k_unlocked()
     if raw_q_source:
         quality_options = _build_quality_options_from_list(raw_q_source, active_link=hdhub_link)
+        for q_opt in quality_options:
+            q_opt['locked_4k'] = (not allow_4k_cur) and _is_4k_marker(
+                f"{q_opt.get('short_label', '')} {q_opt.get('label', '')} {q_opt.get('raw_title', '')}"
+            )
 
     # Resolve best candidate if no direct stream_url yet
     if not is_offline_local and not stream_url:
+        if not allow_4k_cur and quality_options and selected_q_id is not None and 0 <= selected_q_id < len(quality_options):
+            if quality_options[selected_q_id].get('locked_4k'):
+                msg4k = "4K Ultra playback ke liye 6 Months (Rs199) ya 1 Year (Rs349) VIP Plan chahiye!"
+                return None, {"success": False, "vip_required": True, "upgrade_4k_required": True, "error": msg4k, "message": msg4k}
+
+        if not allow_4k_cur and not quality_options and _is_4khdhub_url(movie_permalink) and _is_4k_marker(title_val):
+            msg4k = "Ye 4K Ultra title hai — 6 Months (Rs199) ya 1 Year (Rs349) VIP Plan se unlock karein!"
+            return None, {"success": False, "vip_required": True, "upgrade_4k_required": True, "error": msg4k, "message": msg4k}
+
         if hdhub_link and (not quality_options or selected_q_id is not None or not movie_permalink):
             cand_indices = []
             if quality_options:
@@ -13324,12 +13447,25 @@ def _prepare_play_target(body, srv_port=None):
                 for idx_q, q_opt in enumerate(quality_options):
                     if q_opt.get('hdhub_link') == hdhub_link and idx_q not in cand_indices:
                         cand_indices.insert(0, idx_q)
+            cand_indices = [i for i in cand_indices if not quality_options[i].get('locked_4k')]
+            if not cand_indices and quality_options and any(q.get('locked_4k') for q in quality_options):
+                playable_non4k = [q['id'] for q in quality_options if not q.get('locked_4k')]
+                if not playable_non4k:
+                    msg4k = "4K Ultra playback ke liye 6 Months (Rs199) ya 1 Year (Rs349) VIP Plan chahiye!"
+                    return None, {"success": False, "vip_required": True, "upgrade_4k_required": True, "error": msg4k, "message": msg4k}
+                cand_indices = playable_non4k[:4]
             if not cand_indices:
                 cand_links = [(0, hdhub_link, '')]
             else:
                 cand_links = [(idx_q, quality_options[idx_q]['hdhub_link'], quality_options[idx_q]['short_label']) for idx_q in cand_indices]
         elif quality_options:
-            ranked = _rank_quality_option_indices(quality_options, pref_quality, pref_lang, selected_q_id)
+            eff_pq = '1080p' if (not allow_4k_cur and pref_quality.lower() in ('4k', '2160p', 'uhd')) else pref_quality
+            ranked = _rank_quality_option_indices(quality_options, eff_pq, pref_lang, selected_q_id)
+            if not allow_4k_cur:
+                ranked = [i for i in ranked if not quality_options[i].get('locked_4k')]
+                if not ranked:
+                    msg4k = "Sirf 4K stream available hai — 6 Months (Rs199) ya 1 Year (Rs349) VIP Plan se unlock karein!"
+                    return None, {"success": False, "vip_required": True, "upgrade_4k_required": True, "error": msg4k, "message": msg4k}
             cand_links = [(i, quality_options[i]['hdhub_link'], quality_options[i]['short_label']) for i in ranked[:6]]
         elif hdhub_link:
             cand_links = [(0, hdhub_link, '')]
@@ -13538,6 +13674,7 @@ def _prepare_play_target(body, srv_port=None):
         "subtitle_file": sub_file,
         "next_episode": next_ep_obj,
         "auto_mode": is_auto_mode,
+        "allow_4k": allow_4k_cur,
         "active_quality_label": active_quality_label,
         "selected_quality_id": int(selected_q_id or 0),
         "quality_options": quality_options,
@@ -13675,6 +13812,17 @@ def _parse_size_to_bytes(size_str):
 FIREBASE_PROJECT_ID = "streamhub-vip"
 FIREBASE_API_KEY = "AIzaSyCy53BV5obtOcXykp5d5tFv9A8vvAalaaM"
 FIREBASE_FIRESTORE_BASE = f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents"
+VIP_4K_CUTOFF_SEC = 7776000  # Strictly > 90 days (3 months) unlocks 4K Ultra
+VIP_PLANS_META = [
+    {"id": "15d", "name": "15 Days", "sub": "HD / 1080p", "duration_seconds": 1296000, "price_inr": 29, "allow_4k": False, "badge": "4K Locked"},
+    {"id": "30d", "name": "1 Month", "sub": "HD / 1080p", "duration_seconds": 2592000, "price_inr": 49, "allow_4k": False, "badge": "4K Locked"},
+    {"id": "3m", "name": "3 Months", "sub": "HD / 1080p", "duration_seconds": 7776000, "price_inr": 119, "allow_4k": False, "badge": "4K Locked"},
+    {"id": "6m", "name": "6 Months", "sub": "All + 4K HDR", "duration_seconds": 15552000, "price_inr": 199, "allow_4k": True, "badge": "4K Unlocked"},
+    {"id": "1y", "name": "1 Year", "sub": "All 4K + VIP", "duration_seconds": 31536000, "price_inr": 349, "allow_4k": True, "badge": "Best Value 4K"},
+]
+
+def _is_4k_marker(txt):
+    return bool(re.search(r'(?:2160p|\b4k\b|uhd|ds4k)', str(txt or ''), re.I))
 
 _VIP_LOCK = threading.Lock()
 _VIP_RUNTIME = {
@@ -13684,6 +13832,8 @@ _VIP_RUNTIME = {
     "label": "",
     "duration_seconds": 0,
     "max_devices": 1,
+    "allow_4k": False,
+    "price_inr": None,
     "device_id": "",
     "activated_epoch": 0.0,
     "expires_epoch": 0.0,
@@ -13843,12 +13993,18 @@ def _fs_decode_vip_doc(doc):
         return None
     dev_ids = _val(flds.get("device_ids")) or []
     act_raw = _val(flds.get("activated_at"))
+    dur_val = int(_val(flds.get("duration_seconds")) or 0)
+    explicit_4k = _val(flds.get("allow_4k"))
+    allow_4k = bool(explicit_4k) if explicit_4k is not None else (dur_val > VIP_4K_CUTOFF_SEC)
+    pr_raw = _val(flds.get("price_inr"))
     return {
         "name": str((doc or {}).get("name") or ""),
         "update_time": str((doc or {}).get("updateTime") or ""),
         "code": str(_val(flds.get("code")) or ""),
-        "duration_seconds": int(_val(flds.get("duration_seconds")) or 0),
+        "duration_seconds": dur_val,
         "max_devices": int(_val(flds.get("max_devices")) or 1),
+        "allow_4k": allow_4k,
+        "price_inr": int(pr_raw) if pr_raw is not None else None,
         "revoked": bool(_val(flds.get("revoked"))),
         "device_ids": [str(x) for x in dev_ids if isinstance(x, str) and x],
         "activated_at_iso": str(act_raw or ""),
@@ -13856,9 +14012,11 @@ def _fs_decode_vip_doc(doc):
         "label": str(_val(flds.get("label")) or ""),
     }
 
-def _vip_persist_session(code="", label="", duration_seconds=0, max_devices=1, device_id="", activated_epoch=0.0, expires_epoch=0.0, remaining_sec=0.0, reason=""):
+def _vip_persist_session(code="", label="", duration_seconds=0, max_devices=1, allow_4k=None, price_inr=None, device_id="", activated_epoch=0.0, expires_epoch=0.0, remaining_sec=0.0, reason=""):
     mono_now = time.monotonic()
     wall_now = time.time()
+    dur_i = int(duration_seconds or 0)
+    eff_4k = (dur_i > VIP_4K_CUTOFF_SEC) if allow_4k is None else bool(allow_4k)
     active = bool(code and remaining_sec > 0.05)
     with _VIP_LOCK:
         _VIP_RUNTIME.update({
@@ -13866,8 +14024,10 @@ def _vip_persist_session(code="", label="", duration_seconds=0, max_devices=1, d
             "active": active,
             "code": code if active else "",
             "label": label if active else "",
-            "duration_seconds": int(duration_seconds or 0),
+            "duration_seconds": dur_i,
             "max_devices": int(max_devices or 1),
+            "allow_4k": eff_4k if active else False,
+            "price_inr": int(price_inr) if (active and price_inr is not None) else None,
             "device_id": device_id or _get_vip_device_id(),
             "activated_epoch": float(activated_epoch or 0.0),
             "expires_epoch": float(expires_epoch or 0.0),
@@ -13880,8 +14040,10 @@ def _vip_persist_session(code="", label="", duration_seconds=0, max_devices=1, d
             "vip_session": {
                 "code": code,
                 "label": label,
-                "duration_seconds": int(duration_seconds or 0),
+                "duration_seconds": dur_i,
                 "max_devices": int(max_devices or 1),
+                "allow_4k": eff_4k,
+                "price_inr": int(price_inr) if price_inr is not None else None,
                 "device_id": device_id,
                 "activated_epoch": float(activated_epoch or 0.0),
                 "expires_epoch": float(expires_epoch or 0.0),
@@ -13903,13 +14065,17 @@ def _vip_load_persisted_once():
         return
     rem = float(sess.get("expires_wall_est", 0) or 0) - time.time()
     if rem > 0.2:
+        dur_i = int(sess.get("duration_seconds") or 0)
+        eff_4k = bool(sess["allow_4k"]) if "allow_4k" in sess else (dur_i > VIP_4K_CUTOFF_SEC)
         with _VIP_LOCK:
             _VIP_RUNTIME.update({
                 "active": True,
                 "code": str(sess.get("code") or ""),
                 "label": str(sess.get("label") or ""),
-                "duration_seconds": int(sess.get("duration_seconds") or 0),
+                "duration_seconds": dur_i,
                 "max_devices": int(sess.get("max_devices") or 1),
+                "allow_4k": eff_4k,
+                "price_inr": sess.get("price_inr"),
                 "device_id": str(sess.get("device_id") or _get_vip_device_id()),
                 "activated_epoch": float(sess.get("activated_epoch") or 0.0),
                 "expires_epoch": float(sess.get("expires_epoch") or 0.0),
@@ -13957,6 +14123,7 @@ def _vip_verify_remote_sync():
             _vip_persist_session(
                 code=code, label=parsed["label"],
                 duration_seconds=parsed["duration_seconds"], max_devices=parsed["max_devices"],
+                allow_4k=parsed["allow_4k"], price_inr=parsed["price_inr"],
                 device_id=dev_id, activated_epoch=parsed["activated_epoch"],
                 expires_epoch=exp_ep, remaining_sec=rem, reason="VIP Active",
             )
@@ -14062,8 +14229,9 @@ def activate_vip_key(raw_key):
 
     _vip_persist_session(
         code=code, label=parsed["label"] or (f"{dur}s Test" if dur < 120 else "VIP Pass"),
-        duration_seconds=dur, max_devices=max_dev, device_id=dev_id,
-        activated_epoch=act_ep, expires_epoch=exp_ep, remaining_sec=rem,
+        duration_seconds=dur, max_devices=max_dev,
+        allow_4k=parsed["allow_4k"], price_inr=parsed["price_inr"],
+        device_id=dev_id, activated_epoch=act_ep, expires_epoch=exp_ep, remaining_sec=rem,
         reason="VIP Unlocked!",
     )
     st = get_vip_status(verify_remote=False)
@@ -14086,6 +14254,8 @@ def get_vip_status(verify_remote=False):
         if act and rem <= 0.0:
             _VIP_RUNTIME["active"] = False
             _VIP_RUNTIME["code"] = ""
+            _VIP_RUNTIME["allow_4k"] = False
+            _VIP_RUNTIME["price_inr"] = None
             _VIP_RUNTIME["unlock_until_mono"] = 0.0
             _VIP_RUNTIME["last_reason"] = "VIP Key ka time khatam ho gaya — naya key daalein"
             act = False
@@ -14104,8 +14274,11 @@ def get_vip_status(verify_remote=False):
             "label": _VIP_RUNTIME["label"] if act else "",
             "duration_seconds": _VIP_RUNTIME["duration_seconds"],
             "max_devices": _VIP_RUNTIME["max_devices"],
+            "allow_4k": bool(_VIP_RUNTIME["allow_4k"]) if act else False,
+            "price_inr": _VIP_RUNTIME["price_inr"] if act else None,
             "device_id": _VIP_RUNTIME["device_id"] or _get_vip_device_id(),
             "reason": _VIP_RUNTIME["last_reason"],
+            "plans": VIP_PLANS_META,
         }
     if should_clear_disk:
         _save_app_config({"vip_session": None})
@@ -14115,6 +14288,10 @@ def get_vip_status(verify_remote=False):
 
 def is_vip_active():
     return bool(get_vip_status(verify_remote=False).get("active"))
+
+def is_4k_unlocked():
+    st = get_vip_status(verify_remote=False)
+    return bool(st.get("active") and st.get("allow_4k"))
 
 def _require_vip_or_error():
     st = get_vip_status(verify_remote=False)
@@ -14959,6 +15136,9 @@ def start_offline_download(body):
 
     title = str(body.get("title") or "StreamHub Movie").strip()
     quality_label = str(body.get("quality_label") or "720p HD").strip()
+    if not is_4k_unlocked() and _is_4k_marker(f"{quality_label} {body.get('size_label', '')}"):
+        msg4k = "4K Offline Download ke liye 6 Months (Rs199) ya 1 Year (Rs349) VIP Plan chahiye!"
+        return {"success": False, "vip_required": True, "upgrade_4k_required": True, "error": msg4k}
     language = str(body.get("language") or get_user_settings()["profile"].get("preferred_language") or "Auto").strip()
     size_label = str(body.get("size_label") or "").strip()
     media_key = str(body.get("media_key") or body.get("sid") or hdhub_link or title).strip()
