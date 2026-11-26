@@ -53,7 +53,7 @@ if sys.platform == 'win32':
     except Exception:
         pass
 
-APP_VERSION = "2.5.4"
+APP_VERSION = "2.5.5"
 DEFAULT_UPDATE_URL = "khushal-jangid/streamhub"
 STREAMHUB_UPDATE_URL = os.environ.get("STREAMHUB_UPDATE_URL", "").strip()
 _ENV_DATA_DIR = os.environ.get("STREAMHUB_DATA_DIR", "").strip()
@@ -1499,6 +1499,251 @@ def _normalize_hdhub_post_url(href):
         return f"{HDHUB4U_BASE_URL}{pu.path}"
     return href
 
+FOURK_BASE_URL = "https://4khdhub.one"
+ALLOWED_4K_CATEGORIES = {
+    '', '2160p-HDR', 'hindi-movies', 'english-movies',
+    'hindi-series', 'english-series', 'korean-series',
+    'anime', 'movies', 'series', 'netflix', 'amazon_prime_video', 'jiohotstar'
+}
+_FOURK_LIST_CACHE = {}
+_FOURK_LIST_LOCK = threading.Lock()
+
+def _is_4khdhub_url(url):
+    return bool(re.search(r'4khdhub\.[a-z]+/', str(url or ''), re.I))
+
+def _parse_4khdhub_cards(html):
+    """Extracts movie and web-series cards from 4khdhub.one HTML with minimal metadata tags."""
+    results = []
+    cards = re.findall(
+        r'<a\s+[^>]*href=["\'](/[^/\'"\s]+-(?:movie|series|tv|show)-\d+/?|https?://4khdhub\.[a-z]+/[^/\'"\s]+-(?:movie|series|tv|show)-\d+/?)["\'][^>]*class=["\'][^"\']*movie-card[^"\']*["\'][^>]*>(.*?)</a>',
+        html, re.DOTALL | re.I
+    )
+    seen = set()
+    for link, inner in cards:
+        full_link = link if link.startswith('http') else f"{FOURK_BASE_URL}{link}"
+        if full_link in seen:
+            continue
+        seen.add(full_link)
+        is_series = bool(re.search(r'-(?:series|tv|show)-\d+', full_link, re.I))
+        img_m = re.search(r'<img\b[^>]*>', inner, re.I)
+        thumb = ''
+        alt_txt = ''
+        if img_m:
+            tag = img_m.group(0)
+            for attr in ('data-src', 'data-lazy-src', 'src'):
+                sm = re.search(rf'\b{attr}=["\']([^"\']+)["\']', tag, re.I)
+                if sm and not sm.group(1).startswith('data:'):
+                    thumb = sm.group(1).strip()
+                    break
+            am = re.search(r'\balt=["\']([^"\']+)["\']', tag, re.I)
+            if am:
+                alt_txt = am.group(1).strip()
+        title = alt_txt
+        if not title:
+            clean_text = re.sub(r'<[^>]+>', ' ', inner).strip()
+            title = re.sub(r'\s+', ' ', clean_text)
+        badges = [_clean_tag_text(b) for b in re.findall(r'<span\s+class=["\'][^"\']*quality-badge[^"\']*["\'][^>]*>(.*?)</span>', inner)]
+        badges = [b for b in badges if b]
+        badges_str = " • ".join(badges) if badges else "4K UHD"
+        if is_series and 'series' not in badges_str.lower():
+            badges_str = f"SERIES • {badges_str}"
+        card_tag = "4K UHD" if any(k in (title + " " + badges_str).lower() for k in ('2160p', '4k', 'uhd', 'hdr', 'remux', 'dv')) else "HD"
+        results.append({
+            "title": title or "Untitled 4K Release",
+            "permalink": full_link,
+            "thumbnail": thumb,
+            "badges": badges_str,
+            "card_tag": card_tag,
+            "year": badges_str,
+            "is_series": is_series,
+            "source": "4khdhub",
+        })
+    return results
+
+def get_latest_4k_movies(page=1, category=''):
+    """Fetches paginated 4K HDR movies & web series from 4khdhub.one with short TTL cache."""
+    p = max(1, int(page or 1))
+    cat = (category or '').strip()
+    if cat not in ALLOWED_4K_CATEGORIES:
+        cat = ''
+    cache_key = (p, cat)
+    now = time.time()
+    with _FOURK_LIST_LOCK:
+        cached = _FOURK_LIST_CACHE.get(cache_key)
+        if cached and (now - cached[0]) < 180:
+            return cached[1]
+    try:
+        if cat:
+            url = f"{FOURK_BASE_URL}/category/{cat}/" if p == 1 else f"{FOURK_BASE_URL}/category/{cat}/page/{p}/"
+        else:
+            url = FOURK_BASE_URL if p == 1 else f"{FOURK_BASE_URL}/page/{p}/"
+        html, _ = fetch_html(url, timeout=10)
+        items = _parse_4khdhub_cards(html)
+        if items:
+            with _FOURK_LIST_LOCK:
+                _FOURK_LIST_CACHE[cache_key] = (time.time(), items)
+        return items
+    except Exception as e:
+        print("[4KHub Latest] error:", e)
+        return []
+
+def search_4khdhub(query, page=1, limit=24):
+    """Searches 4khdhub.one for 4K movies and web series."""
+    q = (query or '').strip()
+    if not q:
+        return get_latest_4k_movies(page=page)[:max(1, int(limit or 24))]
+    try:
+        p = max(1, int(page or 1))
+        url = f"{FOURK_BASE_URL}/?s={urllib.parse.quote(q)}" if p == 1 else f"{FOURK_BASE_URL}/page/{p}/?s={urllib.parse.quote(q)}"
+        html, _ = fetch_html(url, timeout=9)
+        return _parse_4khdhub_cards(html)[:max(1, int(limit or 24))]
+    except Exception as e:
+        print("[4KHub Search] error:", e)
+        return []
+
+def _parse_4khdhub_series(post_url, html):
+    """Parser for 4khdhub.one web series (Season ZIP packs + Individual Episode streams)."""
+    t_m = re.search(r'<title>(.*?)</title>', html, re.I | re.S)
+    series_title = _clean_tag_text(t_m.group(1)) if t_m else "4K Web Series"
+    series_title = re.sub(r'\s*[-|].*$', '', series_title).strip()
+
+    packs = []
+    cp_start = html.find('id="complete-pack"')
+    if cp_start == -1:
+        cp_start = html.find("id='complete-pack'")
+    ep_start = html.find('id="episodes"')
+    if ep_start == -1:
+        ep_start = html.find("id='episodes'")
+
+    if cp_start != -1:
+        cp_sec = html[cp_start:ep_start] if ep_start > cp_start else html[cp_start:]
+        for blk in re.split(r'<div[^>]*class=["\'][^"\']*\bdownload-item\b[^"\']*["\'][^>]*>', cp_sec)[1:]:
+            gm_links = re.findall(r'href=["\'](https?://greenmotors\.[a-z]+/[^"\'\s]+)["\']', blk)
+            if not gm_links:
+                continue
+            hdr_m = re.search(r'<div[^>]*class=["\'][^"\']*download-header[^"\']*["\'][^>]*>(.*?)</div>', blk, re.S)
+            hdr_txt = _clean_tag_text(re.sub(r'<code.*?>.*?</code>', '', hdr_m.group(1), flags=re.S)) if hdr_m else ""
+            ep_num_m = re.search(r'class=["\']episode-number[^"\']*["\'][^>]*>(.*?)</div>', blk, re.S)
+            s_tag = _clean_tag_text(ep_num_m.group(1)) if ep_num_m else ""
+            sz_m = re.search(r'([\d.,]+\s*(?:GB|MB|TB))', blk, re.I)
+            sz_str = sz_m.group(1).strip() if sz_m else ""
+            label = f"[Season Pack] {s_tag + ' • ' if s_tag and s_tag not in hdr_txt else ''}{hdr_txt or 'Complete Season'}"
+            if sz_str and sz_str not in label:
+                label += f" [{sz_str}]"
+            packs.append({
+                "title": label,
+                "size": sz_str,
+                "link": gm_links[0],
+                "fallback_links": gm_links,
+            })
+
+    seasons = []
+    if ep_start != -1:
+        ep_sec = html[ep_start:]
+        for s_blk in re.split(r'<div[^>]*class=["\'][^"\']*episode-header[^"\']*["\'][^>]*>', ep_sec)[1:]:
+            sn_m = re.search(r'class=["\']episode-number["\'][^>]*>(.*?)</div>', s_blk, re.S)
+            st_m = re.search(r'<h3[^>]*class=["\']episode-title["\'][^>]*>(.*?)</h3>', s_blk, re.S)
+            meta_m = re.search(r'<div[^>]*class=["\']episode-meta["\'][^>]*>(.*?)</div>', s_blk, re.S)
+            sn_str = _clean_tag_text(sn_m.group(1)) if sn_m else ""
+            st_str = _clean_tag_text(st_m.group(1)) if st_m else "Season Episodes"
+            meta_badges = re.findall(r'<span[^>]*>(.*?)</span>', meta_m.group(1), re.S) if meta_m else []
+            meta_str = " • ".join(_clean_tag_text(b) for b in meta_badges if _clean_tag_text(b))
+
+            eps = []
+            for e_blk in re.split(r'<div[^>]*class=["\'][^"\']*episode-download-item[^"\']*["\'][^>]*>', s_blk)[1:]:
+                gm_links = re.findall(r'href=["\'](https?://greenmotors\.[a-z]+/[^"\'\s]+)["\']', e_blk)
+                if not gm_links:
+                    continue
+                ft_m = re.search(r'class=["\']episode-file-title["\'][^>]*>(.*?)</div>', e_blk, re.S)
+                epb_m = re.search(r'class=["\']badge-psa["\'][^>]*>(.*?)</span>', e_blk, re.S)
+                sz_m = re.search(r'class=["\']badge-size["\'][^>]*>(.*?)</span>', e_blk, re.S)
+                ep_label = _clean_tag_text(epb_m.group(1)) if epb_m else f"EP-{len(eps)+1:02d}"
+                ep_sz = _clean_tag_text(sz_m.group(1)) if sz_m else ""
+                ep_name = _clean_tag_text(ft_m.group(1)) if ft_m else ep_label
+                eps.append({
+                    "ep_label": ep_label,
+                    "title": ep_name,
+                    "size": ep_sz,
+                    "link": gm_links[0],
+                    "fallback_links": gm_links,
+                })
+
+            if eps:
+                g_title = f"{sn_str + ' • ' if sn_str and not st_str.startswith(sn_str) else ''}{st_str}"
+                if meta_str:
+                    g_title += f" ({meta_str})"
+                seasons.append({"title": g_title, "episodes": eps})
+
+    return {
+        "success": True,
+        "is_series": True,
+        "title": series_title,
+        "seasons": seasons,
+        "packs": packs,
+        "qualities": [{"title": p["title"], "link": p["link"]} for p in packs],
+    }
+
+def parse_4khdhub_movie(post_url):
+    """Parses a 4khdhub.one movie or web-series post page into StreamHub detail format."""
+    try:
+        html, _ = fetch_html(post_url, timeout=12)
+        meta = _extract_hdhub4u_post_meta(html)
+        if '-series-' in post_url.lower() or '-tv-' in post_url.lower() or 'id="episodes"' in html or 'id="complete-pack"' in html:
+            series_res = _parse_4khdhub_series(post_url, html)
+            if series_res.get("seasons") or series_res.get("packs"):
+                series_res["meta"] = meta
+                return series_res
+
+        parsed_items = []
+        seen = set()
+        dl_blocks = re.findall(r'<div[^>]*class=["\'][^"\']*download-item[^"\']*["\'][^>]*>(.*?)</div>\s*</div>\s*</div>', html, re.DOTALL)
+        if not dl_blocks:
+            dl_blocks = re.findall(r'<div[^>]*class=["\'][^"\']*download-item[^"\']*["\'][^>]*>(.*?)(?=<div[^>]*class=["\'][^"\']*download-item|\Z)', html, re.DOTALL)
+
+        for block in dl_blocks:
+            gm_links = re.findall(r'href=["\'](https?://greenmotors\.[a-z]+/[^"\'\s]+)["\']', block)
+            if not gm_links:
+                continue
+            g_link = gm_links[0]
+            if g_link in seen:
+                continue
+            seen.add(g_link)
+            header_m = re.search(r'<div[^>]*class=["\'][^"\']*download-header[^"\']*["\'][^>]*>(.*?)</div>', block, re.DOTALL)
+            item_title = ""
+            if header_m:
+                text_part = re.sub(r'<code.*?>.*?</code>', '', header_m.group(1), flags=re.DOTALL)
+                item_title = _clean_tag_text(text_part)
+            sz_m = re.search(r'([\d.,]+\s*(?:GB|MB|TB))', block, re.I)
+            size_str = sz_m.group(1).strip() if sz_m else ""
+            badges = re.findall(r'<span[^>]*class=["\'][^"\']*badge[^"\']*["\'][^>]*>(.*?)</span>', block)
+            clean_badges = [_clean_tag_text(b) for b in badges if '4khdhub' not in b.lower()]
+            label = item_title or " • ".join(clean_badges) or "4K UHD Stream"
+            if size_str and size_str not in label:
+                label += f" [{size_str}]"
+            parsed_items.append((label, gm_links))
+
+        all_gm = [u for _, links in parsed_items for u in links]
+        gm_map = _decode_greenmotors_map(all_gm)
+        qualities = []
+        for label, links in parsed_items:
+            resolved = None
+            for u in links:
+                cand = gm_map.get(u)
+                if cand and _is_playable_resolved_host(cand):
+                    resolved = cand
+                    break
+            if resolved:
+                tag = "[4K HDR]" if ('2160p' in label.lower() or '4k' in label.lower()) else "[HD Stream]"
+                qualities.append({"title": f"{tag} {label}", "link": resolved})
+
+        qualities.sort(key=lambda q: _rank_quality_label(q['title']), reverse=True)
+        res = {"success": True, "meta": meta, "qualities": qualities}
+        if not qualities:
+            res["error"] = "Is 4K title ka koi active streaming link available nahi hai"
+        return res
+    except Exception as e:
+        return {"success": False, "error": str(e), "qualities": []}
+
 def _parse_hdhub4u_cards(html):
     """Extracts movie and web-series cards from HDHub4u HTML pages."""
     results = []
@@ -2905,7 +3150,7 @@ def _extract_hdhub4u_post_meta(body):
     }
 
 def parse_movie_details(post_url):
-    """Parses HDHub4u movie and web-series posts (Movies + Season Packs + Episodes + HDStream4u HLS), cached 15m."""
+    """Parses HDHub4u and 4KHDHub movie/web-series posts (Movies + Season Packs + Episodes + HLS), cached 15m."""
     slug = _hdhub_slug_key(post_url)
     now = time.time()
     with _DETAILS_CACHE_LOCK:
@@ -2913,6 +3158,14 @@ def parse_movie_details(post_url):
         if cached and (now - cached[0]) < 900:
             _DETAILS_CACHE.move_to_end(slug)
             return cached[1]
+    if _is_4khdhub_url(post_url):
+        res_4k = parse_4khdhub_movie(post_url)
+        if res_4k.get("qualities") or res_4k.get("seasons") or res_4k.get("packs"):
+            with _DETAILS_CACHE_LOCK:
+                _DETAILS_CACHE[slug] = (time.time(), res_4k)
+                while len(_DETAILS_CACHE) > 400:
+                    _DETAILS_CACHE.popitem(last=False)
+        return res_4k
     try:
         html, _ = _fetch_hdhub4u_html(post_url)
         main_m = re.search(r'<main[^>]*>(.*?)</main>', html, re.S | re.I)
@@ -3118,15 +3371,15 @@ def resolve_hubcloud(input_url):
                 return resolve_hubcloud(decoded)
             return {"success": False, "error": "GreenMotors link decode nahi ho paya."}
 
-        # If it's an HDHub4u post link
-        if re.search(r'hdhub4u\.[a-z]+/', input_url, re.I):
+        # If it's an HDHub4u or 4KHDHub post link
+        if re.search(r'hdhub4u\.[a-z]+/', input_url, re.I) or _is_4khdhub_url(input_url):
             details = parse_movie_details(input_url)
             if details.get('is_series'):
                 return details
             if details.get('qualities'):
                 dl_links = [q for q in details['qualities'] if 'hdstream4u.com' not in q['link']]
                 chosen = (dl_links[0] if dl_links else details['qualities'][0])['link']
-                print(f"[Resolver] Followed HDHub4u to: {chosen}")
+                print(f"[Resolver] Followed post to: {chosen}")
                 return resolve_hubcloud(chosen)
 
         # Direct HDStream4u HLS (.m3u8) fast stream support
@@ -5213,6 +5466,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 <button class="top-nav-btn" onclick="jumpCategory('netflix')">Netflix</button>
                 <button class="top-nav-btn" onclick="jumpCategory('amazon-prime-video')">Prime</button>
                 <button class="top-nav-btn" onclick="jumpCategory('jiohotstar')">Hotstar</button>
+                <button class="top-nav-btn" onclick="openHub4kModal()">4K Cinema</button>
                 <button class="top-nav-btn" onclick="scrollToEl('browseSection')">All Movies</button>
             </nav>
         </div>
@@ -5611,7 +5865,11 @@ html, body { max-width: 100%; overflow-x: hidden; }
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 Downloads <span id="homeDlCountPill">(0)</span>
             </button>
-            <button class="smart-pill" id="btnAppVersionChip" onclick="openSettingsModal()" style="margin-left:auto;" title="Settings, Profile, Themes &amp; Updates">v2.5.4 &bull; Settings</button>
+            <button class="smart-pill" id="btnHomeHub4kPill" onclick="openHub4kModal()" style="display:inline-flex;align-items:center;gap:5px;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 4v16"/><path d="M17 4v16"/><path d="M2 12h20"/></svg>
+                4K Cinema Vault
+            </button>
+            <button class="smart-pill" id="btnAppVersionChip" onclick="openSettingsModal()" style="margin-left:auto;" title="Settings, Profile, Themes &amp; Updates">v2.5.5 &bull; Settings</button>
         </div>
         <div class="search-grid" id="searchGrid"></div>
         <div class="load-more-wrap">
@@ -6170,6 +6428,55 @@ html, body { max-width: 100%; overflow-x: hidden; }
     </div>
 </div>
 
+<!-- Sub-Page 7: Dedicated 4K Cinema (4KHDHub) Vault Page -->
+<div class="modal-overlay fullscreen-mobile sh-full-page" id="hub4kPageModal" onclick="if(event.target===this) closeHub4kModal()" role="dialog" aria-modal="true" aria-labelledby="hub4kPageTitle">
+    <div class="settings-dialog" style="max-width:1120px !important;">
+        <div class="settings-head">
+            <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
+                <button type="button" class="btn-sm btn-copy-sm" onclick="closeHub4kModal()">Back</button>
+                <div style="min-width:0;">
+                    <h2 id="hub4kPageTitle" style="font-size:1rem;font-weight:700;color:#fff;">4K Cinema</h2>
+                    <div id="hub4kStatus" style="font-size:0.72rem;color:var(--text-muted);margin-top:1px;">4K HDR &bull; Remux &bull; Anime &bull; Korean Series</div>
+                </div>
+            </div>
+            <button class="btn-close-card" onclick="closeHub4kModal()" aria-label="Close 4K Cinema">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="settings-body">
+            <div class="settings-card" style="padding:12px;">
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <input type="text" id="hub4kSearchInput" class="select-control" style="flex:1 1 200px;min-height:40px;padding:8px 12px;" placeholder="Search 4K movies, remux, anime, Korean series..." onkeydown="if(event.key==='Enter') searchHub4k();">
+                    <button type="button" class="btn-sm btn-vlc-sm" style="min-height:40px;padding:0 16px;" onclick="searchHub4k()">Search</button>
+                    <button type="button" class="btn-sm btn-copy-sm" style="min-height:40px;padding:0 12px;" onclick="resetHub4kBrowse()">Latest</button>
+                </div>
+                <div class="cat-strip" id="hub4kCategoryStrip" style="margin:11px 0 0;padding-bottom:2px;" role="tablist" aria-label="4K Categories">
+                    <button class="cat-chip active" data-cat4k="" onclick="selectHub4kCategory(this, '')">All Latest</button>
+                    <button class="cat-chip" data-cat4k="2160p-HDR" onclick="selectHub4kCategory(this, '2160p-HDR')">2160p HDR</button>
+                    <button class="cat-chip" data-cat4k="hindi-movies" onclick="selectHub4kCategory(this, 'hindi-movies')">Hindi Movies</button>
+                    <button class="cat-chip" data-cat4k="english-movies" onclick="selectHub4kCategory(this, 'english-movies')">English Movies</button>
+                    <button class="cat-chip" data-cat4k="hindi-series" onclick="selectHub4kCategory(this, 'hindi-series')">Hindi Series</button>
+                    <button class="cat-chip" data-cat4k="english-series" onclick="selectHub4kCategory(this, 'english-series')">English Series</button>
+                    <button class="cat-chip" data-cat4k="korean-series" onclick="selectHub4kCategory(this, 'korean-series')">Korean Series</button>
+                    <button class="cat-chip" data-cat4k="anime" onclick="selectHub4kCategory(this, 'anime')">Anime</button>
+                    <button class="cat-chip" data-cat4k="netflix" onclick="selectHub4kCategory(this, 'netflix')">Netflix</button>
+                    <button class="cat-chip" data-cat4k="amazon_prime_video" onclick="selectHub4kCategory(this, 'amazon_prime_video')">Prime Video</button>
+                    <button class="cat-chip" data-cat4k="jiohotstar" onclick="selectHub4kCategory(this, 'jiohotstar')">JioHotstar</button>
+                </div>
+                <div class="filter-pills" style="margin-top:10px;width:fit-content;" role="tablist" aria-label="Filter 4K Cinema">
+                    <button class="filter-btn active" id="hub4kFilterAll" onclick="setHub4kFilter('all')">All</button>
+                    <button class="filter-btn" id="hub4kFilterMovies" onclick="setHub4kFilter('movies')">Movies</button>
+                    <button class="filter-btn" id="hub4kFilterSeries" onclick="setHub4kFilter('series')">Web Series</button>
+                </div>
+            </div>
+            <div class="search-grid" id="hub4kGrid"></div>
+            <div class="load-more-wrap">
+                <button type="button" class="btn-primary" id="btnLoadMore4k" onclick="loadMoreHub4k()" style="display:none;">Load More 4K Titles</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Download Quality & Audio Language Picker Modal -->
 <div class="modal-overlay" id="downloadPickerModal" onclick="if(event.target===this) closeDownloadPicker()" role="dialog" aria-modal="true" aria-labelledby="dlPickerTitle">
     <div class="modal-dialog" style="max-width:500px;width:96%;text-align:left;padding:18px;">
@@ -6261,8 +6568,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
             <span>Downloads</span>
             <span class="nav-dl-badge" id="dockDownloadsBadge" style="display:none;position:absolute;top:2px;right:10px;min-width:16px;height:16px;font-size:0.6rem;">0</span>
         </button>
-        <button class="dock-btn" id="dockBtnRemote" onclick="isAndroidApp() ? jumpCategory('hollywood-movies') : openRemoteModal()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <button class="dock-btn" id="dockBtnRemote" onclick="isAndroidApp() ? openHub4kModal() : openRemoteModal()">
+            <svg id="dockIconRemote" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
             <span id="dockLblRemote">Remote</span>
         </button>
         <button class="dock-btn" id="dockBtnQr" onclick="isAndroidApp() ? openSettingsModal() : openQrModal()" style="position:relative;">
@@ -6435,11 +6742,12 @@ html, body { max-width: 100%; overflow-x: hidden; }
     }
 
     window.__shAndroidHandleBack = function() {
-        const modals = ['startupUpdateModal', 'downloadPickerModal', 'inlineWebPlayerModal', 'trailerModalOverlay', 'qrModalOverlay', 'remoteModalOverlay', 'profilePageModal', 'themePageModal', 'dlSettingsPageModal', 'toolsPageModal', 'updateModalOverlay', 'downloadsModalOverlay', 'settingsModalOverlay'];
+        const modals = ['startupUpdateModal', 'downloadPickerModal', 'inlineWebPlayerModal', 'trailerModalOverlay', 'qrModalOverlay', 'remoteModalOverlay', 'hub4kPageModal', 'profilePageModal', 'themePageModal', 'dlSettingsPageModal', 'toolsPageModal', 'updateModalOverlay', 'downloadsModalOverlay', 'settingsModalOverlay'];
         for (const id of modals) {
             const el = document.getElementById(id);
             if (el && el.classList.contains('open')) {
                 if (id === 'startupUpdateModal') closeStartupUpdateModal(true);
+                else if (id === 'hub4kPageModal') closeHub4kModal();
                 else if (id === 'downloadPickerModal') closeDownloadPicker();
                 else if (id === 'inlineWebPlayerModal') closeInlinePlayer();
                 else if (id === 'trailerModalOverlay') closeTrailerModal();
@@ -6783,6 +7091,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
         if (e.key === 'Escape') {
             dismissIntro();
             closeStartupUpdateModal(true);
+            closeHub4kModal();
             closeTrailerModal();
             closeQrModal();
             closeRemoteModal();
@@ -6812,7 +7121,11 @@ html, body { max-width: 100%; overflow-x: hidden; }
             const mainTxt = document.getElementById('btnMainVlcText');
             if (mainTxt) mainTxt.textContent = 'Play in StreamHub Cinema Player';
             const lr = document.getElementById('dockLblRemote');
-            if (lr) lr.textContent = 'Movies';
+            if (lr) lr.textContent = '4K Hub';
+            const ir = document.getElementById('dockIconRemote');
+            if (ir) {
+                ir.innerHTML = '<rect x="2" y="4" width="20" height="16" rx="2"/><line x1="7" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="17" y2="20"/><line x1="2" y1="12" x2="22" y2="12"/>';
+            }
             const lq = document.getElementById('dockLblQr');
             if (lq) lq.textContent = 'Settings';
             const iq = document.getElementById('dockIconQr');
@@ -8774,8 +9087,158 @@ html, body { max-width: 100%; overflow-x: hidden; }
 
     const SH_FULL_PAGES = [
         'settingsModalOverlay', 'profilePageModal', 'themePageModal',
-        'dlSettingsPageModal', 'toolsPageModal', 'updateModalOverlay', 'downloadsModalOverlay'
+        'dlSettingsPageModal', 'toolsPageModal', 'updateModalOverlay', 'downloadsModalOverlay', 'hub4kPageModal'
     ];
+    let hub4kItems = [];
+    let hub4kPage = 1;
+    let hub4kCategory = '';
+    let hub4kSearchQuery = '';
+    let hub4kFilter = 'all';
+
+    async function openHub4kModal() {
+        dismissIntro();
+        const ov = document.getElementById('hub4kPageModal');
+        if (ov) ov.classList.add('open');
+        _syncFullPageView();
+        if (!hub4kItems.length) {
+            await loadHub4kLatest(1, hub4kCategory, false);
+        }
+    }
+
+    function closeHub4kModal() {
+        const ov = document.getElementById('hub4kPageModal');
+        if (ov) ov.classList.remove('open');
+        _syncFullPageView();
+    }
+
+    function openHub4kMovie(movie) {
+        _savedMainScrollY = 0;
+        closeHub4kModal();
+        loadMovieDetails(movie);
+    }
+
+    function renderHub4kGrid() {
+        const grid = document.getElementById('hub4kGrid');
+        if (!grid) return;
+        grid.innerHTML = '';
+        const list = hub4kItems.filter(m => {
+            if (hub4kFilter === 'movies' && m.is_series) return false;
+            if (hub4kFilter === 'series' && !m.is_series) return false;
+            return true;
+        });
+        if (!list.length) {
+            grid.innerHTML = '<div style="grid-column:1/-1;color:var(--text-muted);padding:28px 0;text-align:center;font-size:0.86rem;">Koi 4K title nahi mila — alag category ya search try karein.</div>';
+            return;
+        }
+        list.forEach(m => {
+            const card = createPosterCard(m, 'movie-card');
+            card.onclick = () => openHub4kMovie(m);
+            card.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openHub4kMovie(m); } };
+            grid.appendChild(card);
+        });
+    }
+
+    function setHub4kFilter(f) {
+        hub4kFilter = f;
+        document.getElementById('hub4kFilterAll').classList.toggle('active', f === 'all');
+        document.getElementById('hub4kFilterMovies').classList.toggle('active', f === 'movies');
+        document.getElementById('hub4kFilterSeries').classList.toggle('active', f === 'series');
+        renderHub4kGrid();
+    }
+
+    async function loadHub4kLatest(page, cat, append) {
+        const p = page || 1;
+        const c = cat || '';
+        const st = document.getElementById('hub4kStatus');
+        const btnMore = document.getElementById('btnLoadMore4k');
+        if (!append && st) st.textContent = 'Loading 4K Cinema feed...';
+        if (append && btnMore) { btnMore.disabled = true; btnMore.textContent = 'Loading...'; }
+        try {
+            const resp = await fetch(`/api/4khub/latest?page=${p}&cat=${encodeURIComponent(c)}`);
+            const items = await resp.json();
+            hub4kPage = p;
+            hub4kCategory = c;
+            hub4kSearchQuery = '';
+            if (append && Array.isArray(items)) {
+                const seen = new Set(hub4kItems.map(x => x.permalink));
+                items.forEach(x => { if (!seen.has(x.permalink)) hub4kItems.push(x); });
+            } else {
+                hub4kItems = Array.isArray(items) ? items : [];
+            }
+            renderHub4kGrid();
+            if (st) st.textContent = `${hub4kItems.length} 4K HDR & Series titles loaded`;
+            if (btnMore) {
+                btnMore.disabled = false;
+                if (Array.isArray(items) && items.length >= 10) {
+                    btnMore.style.display = 'inline-flex';
+                    btnMore.textContent = `Load More (Page ${p + 1})`;
+                } else {
+                    btnMore.style.display = 'none';
+                }
+            }
+        } catch (e) {
+            if (st) st.textContent = '4K feed load error: ' + e.message;
+            if (btnMore) { btnMore.disabled = false; }
+        }
+    }
+
+    async function searchHub4k(query, page, append) {
+        const inp = document.getElementById('hub4kSearchInput');
+        const q = (query !== undefined ? query : (inp ? inp.value : '')).trim();
+        if (!q) { await loadHub4kLatest(1, hub4kCategory, false); return; }
+        const p = page || 1;
+        const st = document.getElementById('hub4kStatus');
+        const btnMore = document.getElementById('btnLoadMore4k');
+        if (!append && st) st.textContent = `Searching "${q}" in 4K Cinema...`;
+        try {
+            const resp = await fetch(`/api/4khub/search?q=${encodeURIComponent(q)}&page=${p}`);
+            const items = await resp.json();
+            hub4kPage = p;
+            hub4kSearchQuery = q;
+            if (append && Array.isArray(items)) {
+                const seen = new Set(hub4kItems.map(x => x.permalink));
+                items.forEach(x => { if (!seen.has(x.permalink)) hub4kItems.push(x); });
+            } else {
+                hub4kItems = Array.isArray(items) ? items : [];
+            }
+            renderHub4kGrid();
+            if (st) st.textContent = `Found ${hub4kItems.length} 4K titles for "${q}"`;
+            if (btnMore) {
+                btnMore.disabled = false;
+                if (Array.isArray(items) && items.length >= 10) {
+                    btnMore.style.display = 'inline-flex';
+                    btnMore.textContent = `Load More Results (Page ${p + 1})`;
+                } else {
+                    btnMore.style.display = 'none';
+                }
+            }
+        } catch (e) {
+            if (st) st.textContent = 'Search error: ' + e.message;
+        }
+    }
+
+    function selectHub4kCategory(btnEl, cat) {
+        document.querySelectorAll('#hub4kCategoryStrip .cat-chip').forEach(b => b.classList.remove('active'));
+        if (btnEl) btnEl.classList.add('active');
+        const inp = document.getElementById('hub4kSearchInput');
+        if (inp) inp.value = '';
+        hub4kSearchQuery = '';
+        loadHub4kLatest(1, cat, false);
+    }
+
+    function resetHub4kBrowse() {
+        const inp = document.getElementById('hub4kSearchInput');
+        if (inp) inp.value = '';
+        hub4kSearchQuery = '';
+        const firstChip = document.querySelector('#hub4kCategoryStrip .cat-chip[data-cat4k=""]');
+        selectHub4kCategory(firstChip, '');
+    }
+
+    function loadMoreHub4k() {
+        const nextP = hub4kPage + 1;
+        if (hub4kSearchQuery) searchHub4k(hub4kSearchQuery, nextP, true);
+        else loadHub4kLatest(nextP, hub4kCategory, true);
+    }
     let _savedMainScrollY = 0;
 
     function _syncFullPageView() {
@@ -10562,7 +11025,7 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
             self._json(get_latest_hdhub4u_movies(page=page, category=cat))
             return
 
-        # HDHub4u Search API (supports limit=8 for instant live typing dropdown)
+        # HDHub4u Search API (+ 4KHDHub fallback supplement when few results match)
         if path == '/api/search':
             q = qp.get('q', [''])[0]
             try:
@@ -10573,7 +11036,45 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
                 limit = int(qp.get('limit', ['24'])[0] or 24)
             except Exception:
                 limit = 24
-            self._json(search_hdhub4u(q, page=page, limit=limit))
+            src = qp.get('source', ['all'])[0].strip().lower()
+            if src == '4khdhub':
+                self._json(search_4khdhub(q, page=page, limit=limit))
+                return
+            hits = search_hdhub4u(q, page=page, limit=limit)
+            if q.strip() and page == 1 and limit >= 10 and len(hits) < 4 and src != 'hdhub4u':
+                try:
+                    extra = search_4khdhub(q, page=1, limit=max(1, limit - len(hits)))
+                    seen_p = {h.get('permalink') for h in hits}
+                    for ex in extra:
+                        if ex.get('permalink') not in seen_p:
+                            hits.append(ex)
+                            seen_p.add(ex.get('permalink'))
+                except Exception:
+                    pass
+            self._json(hits[:limit])
+            return
+
+        # 4KHDHub Dedicated 4K Cinema APIs
+        if path == '/api/4khub/latest':
+            try:
+                page = int(qp.get('page', ['1'])[0] or 1)
+            except Exception:
+                page = 1
+            cat = qp.get('cat', [''])[0]
+            self._json(get_latest_4k_movies(page=page, category=cat))
+            return
+
+        if path == '/api/4khub/search':
+            q = qp.get('q', [''])[0]
+            try:
+                page = int(qp.get('page', ['1'])[0] or 1)
+            except Exception:
+                page = 1
+            try:
+                limit = int(qp.get('limit', ['24'])[0] or 24)
+            except Exception:
+                limit = 24
+            self._json(search_4khdhub(q, page=page, limit=limit))
             return
 
         # Saved Playback Progress Store API

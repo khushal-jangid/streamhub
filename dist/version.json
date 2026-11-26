@@ -1,13 +1,13 @@
 {
-    "version":  "2.5.4",
+    "version":  "2.5.5",
     "download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.0/StreamHub.exe",
     "sha256":  "7723fd9cd24e81c3efbf87c8184fecdbb37191504e6e82c85a7adcd7a5a2250c",
     "size_bytes":  87698023,
-    "apk_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.4/StreamHub.apk",
-    "apk_sha256":  "fdfb0942e428b8ea41f61420ddbcc90f4d21566c5671e4bcb42be1509639766c",
-    "apk_size_bytes":  78032308,
-    "py_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.4/streamhub_app.py",
-    "py_sha256":  "ef4fe12feb524782ba4f56cb67c8247e7237f77ff03ab9932a88b4942b89098c",
-    "min_apk_version_code":  8,
-    "notes":  "v2.5.4 (Android APK): Auto startup update popup when opening app, minimalist dark cinema UI overhaul with crisp monochrome vector SVG icons (zero emojis), high-contrast CTA buttons across all themes, plus 10-connection fast downloader \u0026 ForegroundService background downloads."
+    "apk_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.5/StreamHub.apk",
+    "apk_sha256":  "989a7993bbb5b84084960995aecb5bbc0f7d308d34eb073df25f10946cc4be86",
+    "apk_size_bytes":  78041928,
+    "py_download_url":  "https://github.com/khushal-jangid/streamhub/releases/download/v2.5.5/streamhub_app.py",
+    "py_sha256":  "3adfa6f10b03868e87b0c00331cd5d89c7a8414c3e940a9f448e8305ad85d4fd",
+    "min_apk_version_code":  9,
+    "notes":  "v2.5.5 (Android APK): Dedicated 4K Cinema (4khdhub.one) page with 2160p HDR, Korean Series, Anime categories, 4K search + fallback integration, minimal dark cinema UI \u0026 startup update popup."
 }
